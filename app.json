@@ -16,6 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
+      "bundleIdentifier": "com.snagged.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Snagged needs camera access to take photos of your catches.",
         "NSPhotoLibraryUsageDescription": "Snagged needs access to your Apple Photos to upload images of your catches.",
@@ -39,6 +40,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-dev-client",
       "expo-splash-screen",
       "expo-router",
       "expo-apple-authentication",

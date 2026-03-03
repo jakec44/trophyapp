@@ -1,6 +1,7 @@
 import React, { type ReactNode } from 'react';
 import { View, Text, Image, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import { isValidImageUri } from '@/src/lib/imageUri';
 
@@ -8,6 +9,7 @@ export interface UserLinkProps {
   userId: string;
   username?: string;
   avatarUrl?: string;
+  proVerified?: boolean;
   children?: ReactNode;
   onPressOverride?: () => void;
   /** Layout: 'row' (avatar + text), 'avatar-only', 'text-only' */
@@ -27,6 +29,7 @@ export function UserLink({
   userId,
   username,
   avatarUrl,
+  proVerified = false,
   children,
   onPressOverride,
   variant = 'row',
@@ -75,9 +78,12 @@ export function UserLink({
         )
       )}
       {(variant === 'row' || variant === 'text-only') && username != null && (
-        <Text style={[styles.username, textStyle]} numberOfLines={1}>
-          {username}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={[styles.username, textStyle]} numberOfLines={1}>
+            {username}
+          </Text>
+          {proVerified && <Ionicons name="checkmark-circle" size={14} color="#3B82F6" />}
+        </View>
       )}
     </>
   );

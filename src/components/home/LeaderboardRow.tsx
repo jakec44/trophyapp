@@ -312,7 +312,10 @@ export function LeaderboardRow({
                       {AvatarOrPlaceholder}
                     </View>
                     <View style={styles.tournamentCardUserText}>
-                      <Text style={styles.tournamentCardUsername} numberOfLines={1}>{displayLabel}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={styles.tournamentCardUsername} numberOfLines={1}>{displayLabel}</Text>
+                        {entry.proVerified && <Ionicons name="checkmark-circle" size={14} color="#3B82F6" />}
+                      </View>
                       <Text style={styles.tournamentCardEntryTime}>{formatRelativeTime(entry.createdAt)}</Text>
                     </View>
                   </TouchableOpacity>
@@ -399,7 +402,10 @@ export function LeaderboardRow({
                   </View>
                 )}
                 <View style={styles.restCardUserText}>
-                  <Text style={styles.restCardUsername} numberOfLines={1} ellipsizeMode="tail">{displayLabel}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={styles.restCardUsername} numberOfLines={1} ellipsizeMode="tail">{displayLabel}</Text>
+                    {entry.proVerified && <Ionicons name="checkmark-circle" size={14} color="#3B82F6" />}
+                  </View>
                   <Text style={styles.restCardEntryTime} numberOfLines={1}>{formatRelativeTime(entry.createdAt)}</Text>
                 </View>
               </TouchableOpacity>
@@ -667,6 +673,7 @@ export function LeaderboardRow({
         <UserLink
           userId={entry.userId}
           username={displayLabel}
+          proVerified={entry.proVerified}
           avatarUrl={entry.avatarUrl}
           onPressOverride={handleProfilePress}
           style={styles.userCol}

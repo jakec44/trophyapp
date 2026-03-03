@@ -6,14 +6,22 @@ import { useAuthContext } from '@/src/context/AuthContext';
 import {
   createFeedPost,
   getPublicUrl,
+  getProfileDisplayName,
   MEDIA_BUCKET,
   getFeedPostsForHome,
   type FeedPostWithProfile,
 } from '@/src/lib/supabase';
 
+function isPro(p: { subscription_plan?: string | null; pro_expires_at?: string | null } | null): boolean {
+  if (!p) return false;
+  if (p.subscription_plan !== 'pro') return false;
+  if (p.pro_expires_at && new Date(p.pro_expires_at) <= new Date()) return false;
+  return true;
+}
+
 function rowToFeedPost(row: FeedPostWithProfile): FeedPost {
   const p = row.profiles;
-  const username = p?.username ?? p?.display_name ?? 'Angler';
+  const username = getProfileDisplayName(p);
   const rawAvatar = p?.avatar_url;
   const avatar = rawAvatar
     ? (rawAvatar.startsWith('http') ? rawAvatar : getPublicUrl(MEDIA_BUCKET, rawAvatar))
@@ -39,6 +47,7 @@ function rowToFeedPost(row: FeedPostWithProfile): FeedPost {
     commentCount: row.comment_count ?? 0,
     isHyped: false,
     comments: [],
+    proVerified: isPro(p),
   };
 }
 
@@ -136,6 +145,7 @@ export function FeedProvider({ children }: { children: ReactNode }) {
       xpGained: post.xpGained ?? 100,
       mediaUrls: post.mediaUrls,
       caption: post.caption,
+      proVerified: user?.subscriptionPlan === 'pro',
     };
     setFeedPosts((prev) => [newPost, ...prev]);
   }, [user?.id]);
@@ -166,6 +176,7 @@ export function FeedProvider({ children }: { children: ReactNode }) {
       parentCommentId: replyMeta?.parentCommentId,
       replyToUserId: replyMeta?.replyToUserId,
       replyToUsername: replyMeta?.replyToUsername,
+      proVerified: user?.subscriptionPlan === 'pro',
     };
     setFeedPosts((prev) =>
       prev.map((p) =>

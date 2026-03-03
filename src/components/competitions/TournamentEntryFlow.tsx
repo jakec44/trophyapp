@@ -19,6 +19,7 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,7 @@ import { enterTournament } from '@/src/api/tournaments';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { mockUserProfile } from '@/utils/mockData';
 import { getUserCatches } from '@/src/lib/supabase';
+import { getProLimitType } from '@/src/lib/errorMessages';
 import { getPendingActions } from '@/src/lib/pendingActions';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -341,12 +343,21 @@ export function TournamentEntryFlow({
       onEntered();
       // Brief pause so user sees success, then close
       setTimeout(handleClose, 1200);
-    } catch {
-      // ignore
+    } catch (e) {
+      if (getProLimitType(e) === 'tournament') {
+        Alert.alert(
+          'Pro unlocks unlimited tournament entries',
+          'Upgrade to Pro to enter multiple tournaments.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Upgrade', onPress: () => router.push('/coin-shop') },
+          ]
+        );
+      }
     } finally {
       setIsPosting(false);
     }
-  }, [selected, user, tournamentId, onEntered, handleClose]);
+  }, [selected, user, tournamentId, onEntered, handleClose, router]);
 
   return (
     <Modal

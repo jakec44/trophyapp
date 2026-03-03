@@ -80,6 +80,7 @@ function CommentRow({
           <UserLink
             userId={comment.userId}
             username={comment.username}
+            proVerified={comment.proVerified}
             variant="text-only"
             textStyle={rowStyles.username}
           />

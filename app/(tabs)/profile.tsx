@@ -252,6 +252,7 @@ export default function ProfileScreen() {
           editable={true}
           avatarUri={user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}`}
           username={displayName}
+          proVerified={user?.subscriptionPlan === 'pro'}
           globalRank={globalRank ?? undefined}
           level={gamification.levelInfo.level}
           xpInLevel={gamification.levelInfo.xpInLevel}

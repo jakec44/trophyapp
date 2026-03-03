@@ -25,7 +25,7 @@ import { LogSuccessOverlay } from '@/src/components/log/LogSuccessOverlay';
 import { useCatchDraft } from '@/src/hooks/useCatchDraft';
 import { logCatch } from '@/src/lib/catches';
 import { addPendingCreateCatch } from '@/src/lib/pendingActions';
-import { toFriendlyMessage } from '@/src/lib/errorMessages';
+import { toFriendlyMessage, getProLimitType } from '@/src/lib/errorMessages';
 import { findPassportSpeciesId } from '@/src/lib/speciesMapper';
 import { PASSPORT_SPECIES } from '@/utils/gamificationData';
 
@@ -162,6 +162,19 @@ export default function LogCatchScreen() {
         return;
       }
 
+      if (user.subscriptionPlan !== 'pro' && (gamification.totalCatches ?? 0) >= 20) {
+        setIsSubmitting(false);
+        Alert.alert(
+          'Pro unlocks unlimited logs',
+          'Upgrade to Pro to log unlimited fish.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Upgrade', onPress: () => router.push('/coin-shop') },
+          ]
+        );
+        return;
+      }
+
       const created = await logCatch({
         user_id: user.id,
         species: speciesTrim,
@@ -231,12 +244,24 @@ export default function LogCatchScreen() {
       });
     } catch (e) {
       console.error('[Log] submit: failed', e);
-      const msg = toFriendlyMessage(e);
-      setErrorMessage(msg);
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert(`Log failed\n\n${msg}`);
+      const limit = getProLimitType(e);
+      if (limit === 'log') {
+        Alert.alert(
+          'Pro unlocks unlimited logs',
+          'Upgrade to Pro to log unlimited fish.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Upgrade', onPress: () => router.push('/coin-shop') },
+          ]
+        );
       } else {
-        Alert.alert('Log failed', msg);
+        const msg = toFriendlyMessage(e);
+        setErrorMessage(msg);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert(`Log failed\n\n${msg}`);
+        } else {
+          Alert.alert('Log failed', msg);
+        }
       }
     } finally {
       setIsSubmitting(false);

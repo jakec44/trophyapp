@@ -103,7 +103,7 @@ async function fetchProfiles(q: string): Promise<UserResult[]> {
   const remote: UserResult[] = (data ?? []).map((u) => ({
     id: u.id,
     username: u.username ?? null,
-    display_name: u.display_name ?? null,
+    display_name: (u as { display_name?: string }).display_name ?? null,
     avatar_url: (u as any).avatar_url ?? null,
   }));
 

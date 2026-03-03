@@ -154,14 +154,17 @@ export function useAuth() {
               (user.user_metadata?.full_name as string) ??
               user.email?.split('@')[0] ??
               'Angler';
-            profile = await ensureProfileForUser(user.id, displayName);
+            const username =
+              (user.user_metadata?.username as string) ??
+              `user_${user.id.replace(/-/g, '').slice(0, 12)}`;
+            profile = await ensureProfileForUser(user.id, displayName, undefined, username);
           }
           setState({
             user: profile
               ? {
                   id: user.id,
                   email: user.email,
-                  displayName: profile.display_name,
+                  displayName: profile.name ?? profile.display_name,
                   username: profile.username,
                   avatarUrl: profile.avatar_url,
                   bannerUrl: profile.banner_url,
@@ -198,14 +201,17 @@ export function useAuth() {
                 (authUser.user_metadata?.full_name as string) ??
                 authUser.email?.split('@')[0] ??
                 'Angler';
-              profile = await ensureProfileForUser(authUser.id, displayName);
+              const username =
+                (authUser.user_metadata?.username as string) ??
+                `user_${authUser.id.replace(/-/g, '').slice(0, 12)}`;
+              profile = await ensureProfileForUser(authUser.id, displayName, undefined, username);
             }
             setState({
               user: profile
                 ? {
                     id: authUser.id,
                     email: authUser.email,
-                    displayName: profile.display_name,
+                    displayName: profile.name ?? profile.display_name,
                     username: profile.username,
                     avatarUrl: profile.avatar_url,
                     bannerUrl: profile.banner_url,
@@ -286,7 +292,7 @@ export function useAuth() {
         user: {
           id: user.id,
           email: user.email,
-          displayName: profile.display_name,
+          displayName: profile.name ?? profile.display_name,
           username: profile.username,
           avatarUrl,
           bannerUrl,

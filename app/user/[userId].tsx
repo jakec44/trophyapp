@@ -27,6 +27,7 @@ import { isValidImageUri } from '@/src/lib/imageUri';
 import {
   getUserProfile,
   getUserCatches,
+  getProfileDisplayName,
   sendFriendRequest,
   supabase,
   isValidUuid,
@@ -60,6 +61,7 @@ type FriendStatus = 'none' | 'pending_sent' | 'pending_received' | 'accepted';
 
 type ProfileData = {
   id: string;
+  name?: string | null;
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
@@ -192,7 +194,7 @@ export default function UserProfileScreen() {
 
   const handleMessage = () => {
     if (!userId || !profile) return;
-    const name = encodeURIComponent(profile.display_name ?? profile.username ?? 'Angler');
+    const name = encodeURIComponent(getProfileDisplayName(profile));
     router.push(`/chat/${userId}?displayName=${name}`);
   };
 
@@ -223,7 +225,7 @@ export default function UserProfileScreen() {
     );
   }
 
-  const displayName = profile.display_name ?? profile.username ?? 'Angler';
+  const displayName = getProfileDisplayName(profile);
   const avatarUri = isValidImageUri(profile.avatar_url)
     ? profile.avatar_url
     : `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;

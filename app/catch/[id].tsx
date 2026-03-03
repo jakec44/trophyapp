@@ -5,7 +5,7 @@ import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/utils/colors';
-import { getCatchById } from '@/src/lib/supabase';
+import { getCatchById, getProfileDisplayName } from '@/src/lib/supabase';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import { useLogbookPrefs } from '@/src/hooks/useLogbookPrefs';
 import Feather from '@expo/vector-icons/Feather';
@@ -30,7 +30,7 @@ export default function CatchDetailScreen() {
     taken_at?: string;
     notes?: string;
     user_id: string;
-    profiles?: { display_name?: string; avatar_url?: string; username?: string } | null;
+    profiles?: { name?: string; display_name?: string; avatar_url?: string; username?: string } | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -90,7 +90,7 @@ export default function CatchDetailScreen() {
     catchData.profiles && Array.isArray(catchData.profiles)
       ? catchData.profiles[0]
       : catchData.profiles;
-  const displayName = profile?.display_name ?? 'Angler';
+  const displayName = getProfileDisplayName(profile);
   const avatarUrl = profile?.avatar_url ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${catchData.user_id}`;
 
   const weightStr = catchData.weight_lb > 0 ? `${catchData.weight_lb.toFixed(1)} lbs` : '';

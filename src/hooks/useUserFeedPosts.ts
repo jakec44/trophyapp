@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
   getFeedPostsByUserId,
+  getProfileDisplayName,
   getPublicUrl,
   MEDIA_BUCKET,
   type FeedPostRow,
@@ -34,7 +35,7 @@ function rowToFeedPost(row: FeedPostRow, username: string, avatar: string): Feed
 
 export function useUserFeedPosts(
   userId: string | null | undefined,
-  profile?: { display_name?: string | null; username?: string | null; avatar_url?: string | null }
+  profile?: { name?: string | null; display_name?: string | null; username?: string | null; avatar_url?: string | null }
 ) {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ export function useUserFeedPosts(
     setLoading(true);
     try {
       const rows = await getFeedPostsByUserId(userId);
-      const displayName = profile?.display_name ?? profile?.username ?? 'Angler';
+      const displayName = getProfileDisplayName(profile);
       const avatar = profile?.avatar_url ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;
       setPosts(rows.map((r) => rowToFeedPost(r, displayName, avatar)));
     } catch (e) {
@@ -57,7 +58,7 @@ export function useUserFeedPosts(
     } finally {
       setLoading(false);
     }
-  }, [userId, profile?.display_name, profile?.username, profile?.avatar_url]);
+  }, [userId, profile?.name, profile?.display_name, profile?.username, profile?.avatar_url]);
 
   useEffect(() => {
     refresh();

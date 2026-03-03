@@ -27,6 +27,7 @@ export interface FeedComment {
   replyToUserId?: string;
   /** Username of the comment being replied to (for display) */
   replyToUsername?: string;
+  proVerified?: boolean;
 }
 
 export interface FeedPost {
@@ -59,6 +60,7 @@ export interface FeedPost {
   previousRank?: number;
   currentRank?: number;
   xpGained?: number;
+  proVerified?: boolean;
 }
 
 export interface StoryItem {

@@ -61,28 +61,21 @@ export interface LogCatchResult {
 export async function logCatch(input: LogCatchInput): Promise<LogCatchResult> {
   const { user_id, species, weight_lb, length_in, notes, location, taken_at, photoUri } = input;
 
-  const payload: Record<string, unknown> = {
-    user_id,
-    species,
-    weight_lb: Math.max(0.1, weight_lb),
-    notes: notes ?? null,
-    location: location ?? null,
-    photo_url: null,
-    taken_at: taken_at ?? new Date().toISOString(),
-    upload_status: photoUri ? 'pending_upload' : 'complete',
-  };
-  if (typeof length_in === 'number' && length_in > 0) payload.length_in = length_in;
-
-  const { data: created, error: insertErr } = await supabase
-    .from('catches')
-    .insert([payload])
-    .select('id, user_id')
-    .single();
+  const { data: rpcData, error: insertErr } = await supabase.rpc('create_log_entry', {
+    p_species: species,
+    p_weight_lb: Math.max(0.1, weight_lb),
+    p_length_in: typeof length_in === 'number' && length_in > 0 ? length_in : null,
+    p_notes: notes ?? null,
+    p_location: location ?? null,
+    p_taken_at: taken_at ?? new Date().toISOString(),
+    p_upload_status: photoUri ? 'pending_upload' : 'complete',
+  });
 
   if (insertErr) throw insertErr;
-  if (!created) throw new Error('Insert returned no row');
+  const created = rpcData as { id: string; user_id: string } | null;
+  if (!created?.id) throw new Error('Insert returned no row');
 
-  const catchId = created.id as string;
+  const catchId = created.id;
   console.log('[LogCatch] session userId:', user_id, 'inserted catchId:', catchId, 'bucket:', BUCKET);
 
   if (!photoUri) {

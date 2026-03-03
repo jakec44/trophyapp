@@ -20,6 +20,7 @@ import { useAuthContext } from '@/src/context/AuthContext';
 import {
   getUserProfile,
   updateUserProfile,
+  checkUsernameAvailable,
 } from '@/src/lib/supabase';
 import { mediaPath } from '@/src/lib/mediaPaths';
 import { uploadImageAsJpegToStorage } from '@/src/lib/supabase';
@@ -31,7 +32,7 @@ import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
 export default function ProfileEditScreen() {
   const router = useRouter();
   const { user, refreshProfile } = useAuthContext();
-  const [displayName, setDisplayName] = useState('');
+  const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [bio, setBio] = useState('');
   const [location, setLocation] = useState('');
@@ -45,14 +46,14 @@ export default function ProfileEditScreen() {
     (async () => {
       const profile = await getUserProfile(user.id);
       if (profile) {
-        setDisplayName(profile.display_name ?? '');
+        setName(profile.name ?? profile.display_name ?? '');
         setUsername(profile.username ?? '');
         setBio(profile.bio ?? '');
         setLocation(profile.location ?? '');
         setAvatarUri(profile.avatar_url ?? null);
         setBannerUri(profile.banner_url ?? null);
       } else {
-        setDisplayName(user.displayName ?? user.email?.split('@')[0] ?? '');
+        setName(user.displayName ?? user.email?.split('@')[0] ?? '');
         setUsername(user.username ?? user.email?.split('@')[0] ?? '');
       }
       setLoading(false);
@@ -123,15 +124,29 @@ export default function ProfileEditScreen() {
 
   const handleSave = async () => {
     if (!user?.id) return;
-    const u = username.trim();
+    const u = username.trim().toLowerCase();
+    const nameVal = name.trim() || 'Angler';
     if (!u) {
       Alert.alert('Username required', 'Please enter a unique username.');
+      return;
+    }
+    const usernameRegex = /^[a-z0-9_]{3,20}$/;
+    if (!usernameRegex.test(u)) {
+      Alert.alert(
+        'Invalid username',
+        'Use 3–20 characters: letters, numbers, and underscores only (e.g. jake_angler).'
+      );
+      return;
+    }
+    const available = await checkUsernameAvailable(u, user.id);
+    if (!available) {
+      Alert.alert('Username taken', 'This username is already in use. Try another.');
       return;
     }
     setSaving(true);
     try {
       await updateUserProfile(user.id, {
-        display_name: displayName.trim() || 'Angler',
+        display_name: nameVal,
         username: u,
         bio: bio.trim() || null,
         location: location.trim() || null,
@@ -199,8 +214,8 @@ export default function ProfileEditScreen() {
           <Text style={styles.label}>Name</Text>
           <TextInput
             style={styles.input}
-            value={displayName}
-            onChangeText={setDisplayName}
+            value={name}
+            onChangeText={setName}
             placeholder="Your name (can be shared)"
             placeholderTextColor={colors.lightSubtext}
           />

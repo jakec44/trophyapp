@@ -15,11 +15,14 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import type { TournamentEligibility } from '@/src/api/tournaments';
 import { enterTournament } from '@/src/api/tournaments';
+import { getProLimitType } from '@/src/lib/errorMessages';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { mockUserProfile } from '@/utils/mockData';
 import type { UserFish } from '@/src/types/tournaments';
@@ -59,6 +62,7 @@ export function TournamentPotentialSheet({
   weightLbs,
   lengthIn,
 }: TournamentPotentialSheetProps) {
+  const router = useRouter();
   const { user } = useAuthContext();
 
   // Per-tournament entered & entering state
@@ -85,12 +89,21 @@ export function TournamentPotentialSheet({
     try {
       await enterTournament(e.tournamentId, userId, username, fish, avatarUrl);
       setEnteredIds((prev) => new Set([...prev, e.tournamentId]));
-    } catch {
-      // silently ignore — user can retry or dismiss
+    } catch (e) {
+      if (getProLimitType(e) === 'tournament') {
+        Alert.alert(
+          'Pro unlocks unlimited tournament entries',
+          'Upgrade to Pro to enter multiple tournaments.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Upgrade', onPress: () => router.push('/coin-shop') },
+          ]
+        );
+      }
     } finally {
       setEnteringId(null);
     }
-  }, [enteredIds, enteringId, user, catchId, imageUrl, species, weightLbs, lengthIn]);
+  }, [router, enteredIds, enteringId, user, catchId, imageUrl, species, weightLbs, lengthIn]);
 
   if (eligibilities.length === 0) return null;
 

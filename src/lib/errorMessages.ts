@@ -3,7 +3,18 @@
  * Log raw errors to console; show friendly messages to user.
  */
 
+export function getProLimitType(error: unknown): 'log' | 'tournament' | null {
+  const msg = (error instanceof Error ? error.message : String(error ?? '')) || '';
+  if (msg.includes('FREE_LOG_LIMIT')) return 'log';
+  if (msg.includes('FREE_TOURNAMENT_LIMIT')) return 'tournament';
+  return null;
+}
+
 export function toFriendlyMessage(error: unknown): string {
+  const limit = getProLimitType(error);
+  if (limit === 'log') return 'Pro unlocks unlimited logs.';
+  if (limit === 'tournament') return 'Pro unlocks unlimited tournament entries.';
+
   if (error instanceof Error) {
     const msg = error.message || '';
     if (msg.toLowerCase().includes('unique') || msg.includes('duplicate') || msg.includes('already exists') || msg.includes('username')) {

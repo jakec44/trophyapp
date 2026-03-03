@@ -6,6 +6,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useCallback, useEffect } from 'react';
 import { GamificationProvider } from '@/src/context/GamificationContext';
 import { AuthProvider } from '@/src/context/AuthContext';
+import { initRevenueCat } from '@/src/lib/revenueCat';
 import { FriendsProvider } from '@/src/context/FriendsContext';
 import { FeedProvider } from '@/src/context/FeedContext';
 import { AuthRedirect } from '@/src/components/AuthRedirect';
@@ -18,7 +19,10 @@ if (Platform.OS !== 'web') {
 }
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isLoading } = useAuthContext();
+  const { isLoading, user } = useAuthContext();
+  useEffect(() => {
+    initRevenueCat(user?.id ?? null).catch(() => {});
+  }, [user?.id]);
   if (isLoading) return <LoadingScreen />;
   return (
     <>

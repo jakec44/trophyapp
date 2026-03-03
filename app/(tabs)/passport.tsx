@@ -525,11 +525,11 @@ function SpeciesStamp({
       scaleAnim.setValue(0.5);
       glowAnim.setValue(1);
       Animated.parallel([
-        Animated.spring(scaleAnim, {
-          toValue: 1,
+      Animated.spring(scaleAnim, {
+        toValue: 1,
           tension: 120,
           friction: 7,
-          useNativeDriver: true,
+        useNativeDriver: true,
         }),
         Animated.timing(glowAnim, {
           toValue: 0,
@@ -1306,18 +1306,18 @@ export default function PassportScreen() {
         <View style={styles.progressRow}>
           <View style={styles.progressItem}>
             <Text style={styles.progressLabel}>Saltwater</Text>
-            <Text style={styles.progressValue}>
+          <Text style={styles.progressValue}>
               {saltwaterCaught}/{saltwater.length}
-            </Text>
-            <View style={styles.progressBarBg}>
-              <View
-                style={[
-                  styles.progressBarFill,
+          </Text>
+          <View style={styles.progressBarBg}>
+            <View
+              style={[
+                styles.progressBarFill,
                   { width: `${saltwater.length > 0 ? (saltwaterCaught / saltwater.length) * 100 : 0}%` },
-                ]}
-              />
-            </View>
+              ]}
+            />
           </View>
+        </View>
           <View style={styles.progressItem}>
             <Text style={styles.progressLabel}>Freshwater</Text>
             <Text style={styles.progressValue}>
@@ -1330,7 +1330,7 @@ export default function PassportScreen() {
                   { width: `${freshwater.length > 0 ? (freshwaterCaught / freshwater.length) * 100 : 0}%` },
                 ]}
               />
-            </View>
+          </View>
           </View>
         </View>
       </View>
@@ -1427,7 +1427,7 @@ export default function PassportScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-      </View>
+        </View>
 
       <ScrollView
         contentContainerStyle={[styles.gridContainer, { paddingBottom: bottomPadding }]}

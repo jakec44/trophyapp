@@ -35,6 +35,7 @@ export interface FishEntry {
   createdAt: string;
   /** Supabase catch id; cleared when entry is deleted */
   logbookCatchId?: string | null;
+  proVerified?: boolean;
 }
 
 export interface Tournament {

@@ -293,6 +293,7 @@ export async function ensureProfile() {
 /**
  * Ensure a profile row exists for the user. Creates one if missing.
  * Call after signup/signin when getUserProfile returns null.
+ * Sets name and display_name from displayName for backward compatibility.
  */
 export async function ensureProfileForUser(
   userId: string,
@@ -301,15 +302,17 @@ export async function ensureProfileForUser(
   username?: string
 ) {
   try {
+    const disp = displayName ?? 'Angler';
     const payload: Record<string, unknown> = {
       id: userId,
-      display_name: displayName ?? 'Angler',
+      display_name: disp,
       avatar_url:
         avatarUrl ??
         `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`,
       is_mock: false,
     };
-    if (username != null) payload.username = username;
+    if (username != null && username.trim())
+      payload.username = username.trim().toLowerCase();
 
     const { data, error } = await supabase
       .from('profiles')
@@ -322,6 +325,35 @@ export async function ensureProfileForUser(
   } catch (error) {
     console.error('Ensure profile error:', error);
     return null;
+  }
+}
+
+/** Resolve display name from profile: name -> display_name -> username -> fallback */
+export function getProfileDisplayName(
+  p: { name?: string | null; display_name?: string | null; username?: string | null } | null | undefined,
+  fallback = 'Angler'
+): string {
+  const v = p?.name ?? p?.display_name ?? p?.username;
+  return (typeof v === 'string' && v.trim()) ? v.trim() : fallback;
+}
+
+/** Check if username is available (case-insensitive). Exclude current user when editing. */
+export async function checkUsernameAvailable(
+  username: string,
+  excludeUserId?: string
+): Promise<boolean> {
+  const u = username.trim().toLowerCase();
+  if (!u) return false;
+  try {
+    const q = supabase
+      .from('profiles')
+      .select('id')
+      .ilike('username', u)
+      .limit(1);
+    const { data } = await (excludeUserId ? q.neq('id', excludeUserId) : q);
+    return !data?.length;
+  } catch {
+    return false;
   }
 }
 
@@ -373,23 +405,23 @@ export async function getUserCatches(userId: string, limit = 20, offset = 0) {
 }
 
 /**
- * Create a new catch record
+ * Create a new catch record (uses create_log_entry RPC to enforce free-tier 20 limit)
  */
 export async function createCatch(userId: string, catchData: any) {
   try {
-    const { data, error } = await supabase
-      .from('catches')
-      .insert([
-        {
-          user_id: userId,
-          ...catchData,
-        },
-      ])
-      .select()
-      .single();
-
+    const { data, error } = await supabase.rpc('create_log_entry', {
+      p_species: catchData.species ?? 'Unknown',
+      p_weight_lb: Math.max(0.1, catchData.weight_lb ?? 0.1),
+      p_length_in: catchData.length_in ?? null,
+      p_notes: catchData.notes ?? null,
+      p_location: catchData.location ?? null,
+      p_taken_at: catchData.taken_at ?? new Date().toISOString(),
+      p_upload_status: catchData.upload_status ?? 'complete',
+    });
     if (error) throw error;
-    return data;
+    const r = data as { id: string; user_id: string } | null;
+    if (!r?.id) throw new Error('Insert returned no row');
+    return { id: r.id, user_id: r.user_id, ...catchData };
   } catch (error) {
     console.error('Create catch error:', error);
     throw error;
@@ -459,7 +491,7 @@ export async function getLeaderboardEntries(
   try {
     let query = supabase
       .from('leaderboard_entries')
-      .select('*, profiles(display_name, avatar_url)')
+      .select('*, profiles(display_name, avatar_url, username)')
       .eq('competition_id', competitionId)
       .eq('hidden', false)
       .lt('flagged_count', 5)
@@ -550,7 +582,7 @@ export async function getFriendsWithProfiles(userId: string): Promise<FriendWith
       return {
         id: r.id,
         userId: otherId,
-        displayName: p?.display_name ?? 'Angler',
+        displayName: getProfileDisplayName(p),
         avatarUrl,
         username: p?.username,
       };
@@ -612,7 +644,7 @@ export async function getPendingFriendRequests(userId: string): Promise<PendingF
       return {
         id: r.id,
         fromUserId: fromId,
-        fromDisplayName: p?.display_name ?? 'Angler',
+        fromDisplayName: getProfileDisplayName(p),
         fromAvatarUrl: p?.avatar_url ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${fromId}`,
         fromUsername: p?.username,
         createdAt: r.created_at,
@@ -1053,7 +1085,7 @@ export async function getFeedPostsByUserId(
 
 /** Row returned from feed_posts joined with profiles for home feed */
 export interface FeedPostWithProfile extends FeedPostRow {
-  profiles: { display_name: string | null; avatar_url: string | null; username: string | null } | null;
+  profiles: { name?: string | null; display_name: string | null; avatar_url: string | null; username: string | null; subscription_plan?: string | null; pro_expires_at?: string | null } | null;
 }
 
 /** Fetch all feed posts (universal feed) with author profile data. Newest first. */
@@ -1070,7 +1102,7 @@ export async function getFeedPostsForHome(limit = 50): Promise<FeedPostWithProfi
   const userIds = [...new Set(rows.map((r) => r.user_id))];
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, display_name, avatar_url, username')
+    .select('id, display_name, avatar_url, username, subscription_plan, pro_expires_at')
     .in('id', userIds);
   const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
 
@@ -1292,7 +1324,7 @@ export async function getNearbyUsersWithStories(
       if (!photoUrl) continue;
       stories.push({
         userId: c.user_id,
-        username: p.display_name || p.username || 'Angler',
+        username: getProfileDisplayName(p),
         avatar: p.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${c.user_id}`,
         catchPhotoUrl: photoUrl,
         species: c.species,
@@ -1782,7 +1814,7 @@ export async function getDirectConversations(myUserId: string): Promise<DmConver
     .select('id, username, display_name, avatar_url')
     .in('id', otherIds);
 
-  const profileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
+  const profileMap = new Map<string, { name?: string | null; username: string; display_name: string | null; avatar_url: string | null }>();
   for (const p of profiles ?? []) profileMap.set(p.id, p);
 
   return otherIds
@@ -1791,7 +1823,7 @@ export async function getDirectConversations(myUserId: string): Promise<DmConver
       const p = profileMap.get(otherId);
       return {
         otherUserId: otherId,
-        otherUsername: p?.display_name ?? p?.username ?? 'Unknown',
+        otherUsername: getProfileDisplayName(p, 'Unknown'),
         otherAvatarUrl: p?.avatar_url ?? '',
         lastMessage: lastMsg.body,
         lastMessageAt: lastMsg.created_at,
@@ -1901,7 +1933,7 @@ export async function getUserGroupChats(userId: string): Promise<GroupChatSummar
     .from('profiles')
     .select('id, username, display_name, avatar_url')
     .in('id', memberUserIds);
-  const profileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
+  const profileMap = new Map<string, { name?: string | null; username: string; display_name: string | null; avatar_url: string | null }>();
   for (const p of profiles ?? []) profileMap.set(p.id, p);
 
   // Latest message per group
@@ -1923,7 +1955,7 @@ export async function getUserGroupChats(userId: string): Promise<GroupChatSummar
         const p = profileMap.get(m.user_id);
         return {
           userId: m.user_id,
-          username: p?.display_name ?? p?.username ?? 'Unknown',
+          username: getProfileDisplayName(p, 'Unknown'),
           avatarUrl: p?.avatar_url ?? '',
           joinedAt: m.joined_at,
         };
@@ -1959,7 +1991,7 @@ export async function getGroupMessages(groupId: string): Promise<GroupMessage[]>
     .from('profiles')
     .select('id, username, display_name, avatar_url')
     .in('id', senderIds);
-  const profileMap = new Map<string, { username: string; display_name: string | null; avatar_url: string | null }>();
+  const profileMap = new Map<string, { name?: string | null; username: string; display_name: string | null; avatar_url: string | null }>();
   for (const p of profiles ?? []) profileMap.set(p.id, p);
 
   return msgs
@@ -1970,7 +2002,7 @@ export async function getGroupMessages(groupId: string): Promise<GroupMessage[]>
         id: m.id,
         groupId: m.group_id,
         senderId: m.sender_id,
-        senderUsername: p?.display_name ?? p?.username ?? 'Unknown',
+        senderUsername: getProfileDisplayName(p, 'Unknown'),
         senderAvatarUrl: p?.avatar_url ?? '',
         body: m.body,
         createdAt: m.created_at,

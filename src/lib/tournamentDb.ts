@@ -3,7 +3,7 @@
  * Persists tournament entries and votes to PostgreSQL.
  */
 
-import { supabase } from './supabase';
+import { getProfileDisplayName, supabase } from './supabase';
 import type { FishEntry, UserVote } from '@/src/types/tournaments';
 
 export interface TournamentRow {
@@ -29,7 +29,13 @@ export interface TournamentEntryRow {
   down_votes: number;
   user_state: string | null;
   created_at: string;
-  profiles?: { display_name: string | null } | null;
+  profiles?: { name?: string | null; display_name: string | null; username?: string | null; subscription_plan?: string | null; pro_expires_at?: string | null } | null;
+}
+
+function isPro(p: { subscription_plan?: string | null; pro_expires_at?: string | null } | null): boolean {
+  if (!p || p.subscription_plan !== 'pro') return false;
+  if (p.pro_expires_at && new Date(p.pro_expires_at) <= new Date()) return false;
+  return true;
 }
 
 function rowToFishEntry(row: TournamentEntryRow, userVote: UserVote = null): FishEntry {
@@ -38,7 +44,8 @@ function rowToFishEntry(row: TournamentEntryRow, userVote: UserVote = null): Fis
     tournamentId: row.tournament_id,
     userId: row.user_id,
     username: row.username,
-    displayName: row.profiles?.display_name ?? undefined,
+    displayName: getProfileDisplayName(row.profiles),
+    proVerified: isPro(row.profiles),
     imageUrl: row.image_url,
     avatarUrl: row.avatar_url ?? undefined,
     species: row.species ?? undefined,
@@ -70,7 +77,7 @@ export async function getTournamentEntries(
 ): Promise<FishEntry[]> {
   let query = supabase
     .from('tournament_entries')
-    .select('*, profiles!tournament_entries_user_id_fkey(display_name)')
+    .select('*, profiles!tournament_entries_user_id_fkey(display_name, username, subscription_plan, pro_expires_at)')
     .eq('tournament_id', tournamentId)
     .order('created_at', { ascending: false });
 
@@ -114,35 +121,29 @@ export async function insertTournamentEntry(
   },
   options?: { catchId?: string; avatarUrl?: string; userState?: string }
 ): Promise<FishEntry> {
-  // Delete existing entry for this user in this tournament
+  // Delete existing entry for this user in this tournament (replace flow)
   await supabase
     .from('tournament_entries')
     .delete()
     .eq('tournament_id', tournamentId)
     .eq('user_id', userId);
 
-  const { data, error } = await supabase
-    .from('tournament_entries')
-    .insert({
-      id,
-      tournament_id: tournamentId,
-      user_id: userId,
-      catch_id: options?.catchId ?? null,
-      username,
-      avatar_url: options?.avatarUrl ?? null,
-      image_url: fish.imageUrl,
-      species: fish.species ?? null,
-      weight_lb: fish.weightLbs ?? null,
-      length_in: fish.lengthIn ?? null,
-      up_votes: 0,
-      down_votes: 0,
-      user_state: options?.userState ?? null,
-    })
-    .select()
-    .single();
+  const { data, error } = await supabase.rpc('create_tournament_entry', {
+    p_id: id,
+    p_tournament_id: tournamentId,
+    p_catch_id: options?.catchId ?? null,
+    p_username: username,
+    p_avatar_url: options?.avatarUrl ?? null,
+    p_image_url: fish.imageUrl ?? '',
+    p_species: fish.species ?? null,
+    p_weight_lb: fish.weightLbs ?? null,
+    p_length_in: fish.lengthIn ?? null,
+    p_user_state: options?.userState ?? null,
+  });
 
   if (error) throw error;
-  return rowToFishEntry(data as TournamentEntryRow);
+  const row = data as TournamentEntryRow;
+  return rowToFishEntry(row);
 }
 
 /** Vote on an entry via RPC (bypasses RLS). Shared across all users. 50%+ downvotes at 10+ votes = removal. */

@@ -77,6 +77,8 @@ interface ProfileHeaderProps {
   displayedBadgeIds?: string[];
   /** Called when user taps "Badges" / pencil to edit which are on display. */
   onEditBadges?: () => void;
+  /** Show blue Pro verified check next to username */
+  proVerified?: boolean;
 }
 
 export function ProfileHeader({
@@ -105,6 +107,7 @@ export function ProfileHeader({
   earnedBadges = [],
   displayedBadgeIds = [],
   onEditBadges,
+  proVerified = false,
 }: ProfileHeaderProps) {
   const displayedBadges = earnedBadges.filter((b) => displayedBadgeIds.includes(b.id)).slice(0, 5);
   const router = useRouter();
@@ -245,7 +248,10 @@ export function ProfileHeader({
           )}
         </View>
         <View style={styles.profileInfo}>
-          <Text style={styles.username} numberOfLines={1}>{username}</Text>
+          <View style={styles.usernameRow}>
+            <Text style={styles.username} numberOfLines={1}>{username}</Text>
+            {proVerified && <Ionicons name="checkmark-circle" size={18} color="#3B82F6" style={styles.proCheck} />}
+          </View>
           {location ? (
             <View style={styles.locationRow}>
               <Feather name="map-pin" size={12} color={colors.lightSubtext} />
@@ -437,11 +443,19 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: ACCENT_BLUE,
   },
+  usernameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 4,
+  },
   username: {
     fontSize: 18,
     fontWeight: '800',
     color: '#FFFFFF',
-    marginBottom: 4,
+  },
+  proCheck: {
+    marginLeft: 2,
   },
   profileInfo: {
     marginLeft: 14,

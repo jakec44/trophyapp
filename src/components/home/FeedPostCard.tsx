@@ -157,6 +157,7 @@ function CommentRow({
           <UserLink
             userId={c.userId}
             username={c.username}
+            proVerified={c.proVerified}
             variant="text-only"
             textStyle={commentStyles.username}
           />
@@ -275,7 +276,10 @@ export function FeedPostCard({ post, onHype, onAddComment }: FeedPostCardProps) 
               <Text style={styles.avatarFallbackText}>{getInitials(post.username)}</Text>
             </View>
           )}
-          <Text style={styles.username} numberOfLines={1}>{post.username}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Text style={styles.username} numberOfLines={1}>{post.username}</Text>
+            {post.proVerified && <Ionicons name="checkmark-circle" size={14} color="#3B82F6" />}
+          </View>
         </View>
         <Text style={styles.time}>{formatTimeAgo(post.postedAt)}</Text>
       </Pressable>
