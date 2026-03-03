@@ -1,0 +1,7 @@
+# Supabase Edge Functions config
+# Deploy after changing: npx supabase functions deploy <name>
+
+[functions.upload-catch-photo]
+# Allow unauthenticated calls (function validates userId from body)
+# Set to true for production if you want JWT required
+verify_jwt = false

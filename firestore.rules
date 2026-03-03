@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Tournaments: read-only from client. Seed via Admin SDK or script.
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Entries: anyone can read; only entry owner can create/delete; only vote counts (upVotes, downVotes) can be updated by anyone (for voting).
+    match /tournament_entries/{entryId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && onlyVoteFieldsChanged();
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Votes: user can set/update/delete only their own vote doc for an entry.
+    match /entry_votes/{voteId} {
+      allow read: if true;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    function onlyVoteFieldsChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upVotes', 'downVotes']);
+    }
+  }
+}

@@ -1,0 +1,58 @@
+---
+description: App + database ownership — schema, migrations, Supabase queries, no dashboard edits
+globs: schema.sql, supabase/**/*.sql, src/lib/supabase.ts, schema-migrations/**/*.sql
+alwaysApply: true
+---
+
+# App + Database Ownership
+
+## Hard Rules
+
+### 1. No Manual Dashboard or SQL Editor
+
+- **Do NOT ask the user to use the Supabase SQL editor** for any schema or policy changes.
+- **Do NOT manually edit Supabase tables or policies in the dashboard** except to run migrations.
+- All DB and storage policy changes go through migration files only.
+
+### 2. Migrations for All DB Changes
+
+- **Every DB change must be a new SQL migration** in `supabase/migrations/`.
+- Use descriptive names: `YYYYMMDD_description.sql`.
+- Never modify migrations that may have already run in production.
+- **After adding or changing migrations, run `npx supabase db push`** (or `npm run supabase:push` if defined); do not tell the user to apply SQL manually.
+
+### 3. Schema Truth: Migrations + Generated Types
+
+- **Migrations** (`supabase/migrations/`) are the source of truth for schema changes.
+- **Generated types** (`src/types/supabase.ts`) are the source of truth for TypeScript — run `npm run supabase:types` after push.
+- `supabase/schema.sql` is optional reference only; migrations + types are authoritative.
+
+### 4. Queries Match Real Schema
+
+- **`src/lib/supabase.ts` queries must match the real schema** — no phantom columns.
+- Verify table and column names exist before writing queries.
+- Update queries when schema changes via migration.
+
+### 5. Never Crash UI on Missing Data
+
+- **Return `[]` / `null` and show empty states** when data is missing or queries fail.
+- Wrap Supabase calls in try/catch.
+- Log errors: `console.error('Query failed:', error)`.
+
+### Example
+
+```typescript
+// ❌ BAD — can crash UI
+const { data } = await supabase.from('catches').select('*');
+setCatches(data);
+
+// ✅ GOOD — safe fallback
+try {
+  const { data, error } = await supabase.from('catches').select('*');
+  if (error) throw error;
+  setCatches(data ?? []);
+} catch (e) {
+  console.error('Get catches error:', e);
+  setCatches([]);
+}
+```
