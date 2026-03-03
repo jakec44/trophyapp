@@ -16,11 +16,12 @@
     "ios": {
       "supportsTablet": true,
       "usesAppleSignIn": true,
-      "bundleIdentifier": "com.snagged.app",
+      "bundleIdentifier": "com.jakec44.snagged",
       "infoPlist": {
         "NSCameraUsageDescription": "Snagged needs camera access to take photos of your catches.",
         "NSPhotoLibraryUsageDescription": "Snagged needs access to your Apple Photos to upload images of your catches.",
-        "NSLocationWhenInUseUsageDescription": "Snagged uses your location to show local tournaments near you."
+        "NSLocationWhenInUseUsageDescription": "Snagged uses your location to show local tournaments near you.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -31,7 +32,6 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.anonymous.snagged"
@@ -52,6 +52,12 @@
         }
       ],
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "12b4b307-11e3-4d98-b7df-2d98d0f05d4b"
+      }
+    }
   }
 }
