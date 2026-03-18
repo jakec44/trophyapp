@@ -1,12 +1,12 @@
 /**
- * Persists which badge IDs the user has chosen to display on profile (max 5).
+ * Persists which badge IDs the user has chosen to display on profile (max 3).
  */
 
 import { useState, useCallback, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const STORAGE_KEY = '@Snagged/displayBadgeIds';
-const MAX_DISPLAY = 5;
+const MAX_DISPLAY = 3;
 
 export function useDisplayBadges(userId: string | undefined) {
   const [displayedIds, setDisplayedIdsState] = useState<string[]>([]);

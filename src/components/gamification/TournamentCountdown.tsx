@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { colors } from '@/utils/colors';
 import { useTournamentTimer, formatTournamentCountdown } from '@/src/hooks/useTournamentTimer';
@@ -9,10 +10,30 @@ interface TournamentCountdownProps {
   compact?: boolean;
   /** Use light text/pill for dark backgrounds (e.g. blue Live card) */
   onDark?: boolean;
+  /** Called once when the countdown reaches zero (so winner check can run immediately). */
+  onEnded?: () => void;
 }
 
-export function TournamentCountdown({ endsAt, compact = false, onDark = false }: TournamentCountdownProps) {
+export function TournamentCountdown({ endsAt, compact = false, onDark = false, onEnded }: TournamentCountdownProps) {
   const remaining = useTournamentTimer(endsAt);
+  const didFireEnded = useRef(false);
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+
+  // Fire once when countdown reaches zero; immediate + one short retry (server may be slightly behind)
+  useEffect(() => {
+    if (!remaining.ended) {
+      didFireEnded.current = false;
+      return;
+    }
+    if (didFireEnded.current) return;
+    const fn = onEndedRef.current;
+    if (!fn) return;
+    didFireEnded.current = true;
+    fn();
+    const t = setTimeout(fn, 800);
+    return () => clearTimeout(t);
+  }, [remaining.ended]);
 
   const hoursLeft = remaining.totalHours;
   const isUnder24h = hoursLeft < 24 && hoursLeft >= 0;

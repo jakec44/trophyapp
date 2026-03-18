@@ -12,7 +12,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Modal,
-  Dimensions,
   KeyboardAvoidingView,
   ScrollView,
   Keyboard,
@@ -20,8 +19,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
-
-const { width: SW, height: SH } = Dimensions.get('window');
 
 interface StoryComposerProps {
   visible: boolean;
@@ -56,14 +53,17 @@ export function StoryComposer({
       visible={visible}
       transparent
       animationType="slide"
+      statusBarTranslucent
       onRequestClose={onCancel}
     >
       <View style={styles.overlay}>
-        <Image
-          source={{ uri: imageUri }}
-          style={styles.image}
-          resizeMode="cover"
-        />
+        <View style={styles.imageWrap}>
+          <Image
+            source={{ uri: imageUri }}
+            style={styles.image}
+            resizeMode="cover"
+          />
+        </View>
         <KeyboardAvoidingView
           style={styles.content}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -114,15 +114,16 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageWrap: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
   },
   image: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: SW,
-    height: SH,
+    width: '100%',
+    height: '100%',
   },
   content: {
     flex: 1,

@@ -12,14 +12,14 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
 const SUPPORTED_SPECIES = [
   "Red Drum (Redfish)", "Snook", "Spotted Seatrout", "Flounder", "Sheepshead", "Black Drum",
   "Spanish Mackerel", "King Mackerel", "Pompano", "Jack Crevalle", "Ladyfish", "Bluefish", "Tarpon",
-  "Mahi Mahi", "Cobia", "Red Snapper", "Mangrove Snapper", "Yellowtail Snapper", "Amberjack", "Grouper",
+  "Mahi Mahi", "Cobia", "Red Snapper", "Mangrove Snapper", "Yellowtail Snapper", "Vermillion Snapper", "Amberjack", "Grouper",
   "Striped Bass", "Weakfish", "Barracuda", "Triggerfish", "Sea Bass", "Porgy", "Hogfish", "Tripletail",
   "Bonefish", "Permit",
-  "Largemouth Bass", "Smallmouth Bass", "Spotted Bass", "Crappie (Black)", "Crappie (White)", "Bluegill",
+  "Largemouth Bass", "Smallmouth Bass", "Spotted Bass", "Crappie (Black)", "Crappie (White)", "Bluegill", "Pumpkinseed",
   "Channel Catfish", "Flathead Catfish", "Blue Catfish", "Walleye", "Northern Pike", "Rainbow Trout",
-  "Brown Trout", "Brook Trout", "Muskie", "Carp", "White Bass", "Yellow Perch", "Drum (Freshwater)", "Gar",
+  "Brown Trout", "Brook Trout", "Tiger Trout", "Muskie", "Common Carp", "Grass Carp", "White Bass", "Yellow Perch", "Drum (Freshwater)", "Gar",
   "Bowfin", "American Shad", "Threadfin Shad", "White Perch", "Pickerel", "Warmouth", "Peacock Bass",
-  "Snakehead", "White Sturgeon", "Atlantic Sturgeon", "Steelhead", "Salmon",
+  "Snakehead", "Clown Knifefish", "White Sturgeon", "Atlantic Sturgeon", "Steelhead", "Salmon",
   "Pinfish", "Stingray", "Pigfish", "Pufferfish", "Wahoo", "Yellowfin Tuna", "Bluefin Tuna", "Kingfish",
   "Sailfish", "White Marlin",
 ];
@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
     }
 
     const prompt = `Look at this photo carefully. It shows a fish that was caught. Your job is to:
-1. Identify the fish species. You MUST choose exactly one from this list (use the exact name): Red Drum (Redfish), Snook, Spotted Seatrout, Flounder, Sheepshead, Black Drum, Spanish Mackerel, King Mackerel, Pompano, Largemouth Bass, Smallmouth Bass, Spotted Bass, Crappie (Black), Crappie (White), Bluegill, Channel Catfish, Walleye, Northern Pike, Rainbow Trout, Brown Trout, Brook Trout, Mahi Mahi, Red Snapper, Tarpon, Bluefish, Striped Bass, Cobia, Grouper, Barracuda, Carp, Muskie, Gar, Bowfin, American Shad, Threadfin Shad, White Perch, Pickerel, Warmouth, Peacock Bass, Snakehead, White Sturgeon, Atlantic Sturgeon, Steelhead, Salmon, Pinfish, Stingray, Pigfish, Pufferfish, Wahoo, Yellowfin Tuna, Bluefin Tuna, Kingfish, Sailfish, White Marlin. If the fish is not clearly visible or does not match any listed species, use "Unknown".
+1. Identify the fish species. You MUST choose exactly one from this list (use the exact name): Red Drum (Redfish), Snook, Spotted Seatrout, Flounder, Sheepshead, Black Drum, Spanish Mackerel, King Mackerel, Pompano, Largemouth Bass, Smallmouth Bass, Spotted Bass, Crappie (Black), Crappie (White), Bluegill, Pumpkinseed, Channel Catfish, Walleye, Northern Pike, Rainbow Trout, Brown Trout, Brook Trout, Tiger Trout, Mahi Mahi, Red Snapper, Mangrove Snapper, Yellowtail Snapper, Vermillion Snapper, Tarpon, Bluefish, Striped Bass, Cobia, Grouper, Barracuda, Common Carp, Grass Carp, Muskie, Gar, Bowfin, American Shad, Threadfin Shad, White Perch, Pickerel, Warmouth, Peacock Bass, Snakehead, Clown Knifefish, White Sturgeon, Atlantic Sturgeon, Steelhead, Salmon, Pinfish, Stingray, Pigfish, Pufferfish, Wahoo, Yellowfin Tuna, Bluefin Tuna, Kingfish, Sailfish, White Marlin. If the fish is not clearly visible or does not match any listed species, use "Unknown".
 2. Estimate the weight in pounds based on the fish size in the image (typical adult sizes).
 3. Estimate the length in inches based on the fish size.
 

@@ -1,5 +1,5 @@
 /**
- * Modal to choose which badges to display on profile (max 5).
+ * Modal to choose which badges to display on profile (max 3).
  */
 
 import { useState, useEffect } from 'react';
@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import type { EarnedBadgeItem } from './ProfileHeader';
 
-const MAX_DISPLAY = 5;
+const MAX_DISPLAY = 3;
 
 interface Props {
   visible: boolean;
@@ -64,7 +64,7 @@ export function BadgePickerModal({
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={styles.title}>Display badges</Text>
-            <Text style={styles.subtitle}>Choose up to {MAX_DISPLAY} to show on your profile</Text>
+            <Text style={styles.subtitle}>Choose up to 3 to show on your profile</Text>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={10}>
               <Ionicons name="close" size={24} color={colors.lightSubtext} />
             </TouchableOpacity>

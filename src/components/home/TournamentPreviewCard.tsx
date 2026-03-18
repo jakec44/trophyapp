@@ -5,6 +5,7 @@ import Feather from '@expo/vector-icons/Feather';
 import type { Tournament, FishEntry } from '@/src/types/tournaments';
 import { LeaderboardRow } from './LeaderboardRow';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 interface TournamentPreviewCardProps {
   tournament: Tournament;
   onVote: (entryId: string, vote: 'UP' | 'DOWN' | null) => void;
@@ -20,6 +21,7 @@ export function TournamentPreviewCard({
   compact = false,
 }: TournamentPreviewCardProps) {
   const router = useRouter();
+  const winCheck = useTournamentWinCheckContext();
   const entries = tournament.topEntries.slice(0, 2);
 
   const handleViewAll = () => {
@@ -33,7 +35,10 @@ export function TournamentPreviewCard({
           <Text style={styles.title}>{tournament.title}</Text>
           <View style={styles.badges}>
             {tournament.endsAt && (
-              <TournamentCountdown endsAt={tournament.endsAt} />
+              <TournamentCountdown
+                endsAt={tournament.endsAt}
+                onEnded={winCheck?.triggerCheck}
+              />
             )}
           </View>
         </View>
@@ -45,7 +50,11 @@ export function TournamentPreviewCard({
         {tournament.endsAt && compact && (
           <>
             <Text style={[styles.entrants, compact && styles.entrantsCompact]}> · </Text>
-            <TournamentCountdown endsAt={tournament.endsAt} compact />
+            <TournamentCountdown
+              endsAt={tournament.endsAt}
+              compact
+              onEnded={winCheck?.triggerCheck}
+            />
           </>
         )}
       </View>

@@ -3,16 +3,13 @@
  * Shows: title, GLOBAL/LOCAL scope, LIVE/ENDED, countdown, entrants, unit.
  */
 
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
-import { useRouter } from 'expo-router';
-import Feather from '@expo/vector-icons/Feather';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import type { Tournament, MetricType } from '@/src/types/tournaments';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 import { GlobalLocalToggle } from '@/src/components/competitions/GlobalLocalToggle';
-import { useLocationPermission } from '@/src/hooks/useLocationPermission';
 
 function getMetricLabel(metricType: MetricType): { label: string; icon: keyof typeof Ionicons.glyphMap } {
   switch (metricType) {
@@ -40,65 +37,51 @@ export function TournamentDetailHeader({
   onScopeChange,
   showSyncSubtitle = true,
 }: TournamentDetailHeaderProps) {
-  const router = useRouter();
-  const { ensurePermission } = useLocationPermission();
+  const winCheck = useTournamentWinCheckContext();
 
   const isEnded = tournament.endsAt && new Date(tournament.endsAt).getTime() < Date.now();
   const title =
     tournament.id === 'biggest-fish-this-week'
-      ? 'Biggest Fish'
-      : `Biggest Fish • ${tournament.title}`;
+      ? 'Biggest Fish Overall'
+      : `Biggest Fish Overall • ${tournament.title}`;
   const metric = getMetricLabel(tournament.metricType);
 
-  const handleScopeChange = async (v: 'global' | 'local') => {
-    if (v === 'local') {
-      const granted = await ensurePermission();
-      if (!granted) return;
-    }
+  const handleScopeChange = (v: 'global' | 'local') => {
     onScopeChange(v);
   };
 
   return (
     <View style={styles.container}>
-      <SnaggedWordmark />
-
-      <Text style={styles.title} numberOfLines={2}>
+      <Text style={styles.title} numberOfLines={1}>
         {title}
       </Text>
 
-      {/* Scope badge — GLOBAL / LOCAL, big and obvious */}
-      <View style={styles.scopeWrap}>
-        <GlobalLocalToggle value={scope} onChange={handleScopeChange} dark />
-      </View>
-
-      {/* Status + countdown row */}
-      <View style={styles.badges}>
-        {isEnded ? (
-          <Text style={styles.endedText}>Ended</Text>
-        ) : (
-          tournament.endsAt && (
-            <TournamentCountdown endsAt={tournament.endsAt} onDark />
-          )
-        )}
-      </View>
-
-      {/* Entrants + Unit */}
-      <View style={styles.metaRow}>
+      {/* One row: scope + countdown/ended + entrants · unit */}
+      <View style={styles.topRow}>
+        <View style={styles.scopeWrap}>
+          <GlobalLocalToggle value={scope} onChange={handleScopeChange} dark />
+        </View>
+        <View style={styles.badges}>
+          {isEnded ? (
+            <Text style={styles.endedText}>Ended</Text>
+          ) : (
+            tournament.endsAt && (
+              <TournamentCountdown
+                endsAt={tournament.endsAt}
+                onDark
+                onEnded={() => {
+                  winCheck?.triggerCheck();
+                  winCheck?.triggerCheckForTournament(tournament.id);
+                }}
+              />
+            )
+          )}
+        </View>
         <Text style={styles.entrants}>{tournament.entrantsCount} entrants</Text>
         <View style={styles.unitPill}>
-          <Ionicons name={metric.icon} size={12} color={colors.teal} />
-          <Text style={styles.unitText}>Unit: {metric.label}</Text>
+          <Ionicons name={metric.icon} size={10} color={colors.teal} />
+          <Text style={styles.unitText}>{metric.label}</Text>
         </View>
-      </View>
-
-      {showSyncSubtitle && (
-        <Text style={styles.subtitle}>Entries sync to Global & Local</Text>
-      )}
-
-      <View style={styles.votingRules}>
-        <Text style={styles.votingRulesText}>
-          👍 Verify size · 👎 Down votes over 50% may remove
-        </Text>
       </View>
     </View>
   );
@@ -106,84 +89,65 @@ export function TournamentDetailHeader({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 10,
     backgroundColor: colors.lightBackground,
     borderBottomWidth: 1,
     borderBottomColor: colors.lightBorder,
   },
   backButton: {
-    paddingVertical: 8,
-    paddingRight: 8,
+    paddingVertical: 6,
+    paddingRight: 6,
     alignSelf: 'flex-start',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   title: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '800',
     color: colors.lightText,
-    marginBottom: 12,
-    letterSpacing: 0.3,
+    marginBottom: 8,
+    letterSpacing: 0.2,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
   },
   scopeWrap: {
-    marginBottom: 12,
+    marginRight: 4,
   },
   badges: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
   },
   endedText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.lightSubtext,
     fontStyle: 'italic',
   },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 4,
-  },
   entrants: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.lightSubtext,
+    marginLeft: 4,
   },
   unitPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    gap: 2,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
     backgroundColor: 'rgba(0,229,200,0.08)',
-    borderRadius: 8,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: 'rgba(0,229,200,0.2)',
   },
   unitText: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.teal,
-  },
-  subtitle: {
-    fontSize: 11,
-    color: colors.lightSubtext,
-    marginBottom: 12,
-  },
-  votingRules: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(74, 144, 226, 0.08)',
-    borderRadius: 10,
-  },
-  votingRulesText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.lightSubtext,
   },
 });

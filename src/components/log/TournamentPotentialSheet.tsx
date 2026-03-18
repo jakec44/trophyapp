@@ -24,7 +24,7 @@ import type { TournamentEligibility } from '@/src/api/tournaments';
 import { enterTournament } from '@/src/api/tournaments';
 import { getProLimitType } from '@/src/lib/errorMessages';
 import { useAuthContext } from '@/src/context/AuthContext';
-import { mockUserProfile } from '@/utils/mockData';
+import { usePresentPaywall } from '@/src/hooks/usePresentPaywall';
 import type { UserFish } from '@/src/types/tournaments';
 
 const GOLD = colors.gold;
@@ -36,8 +36,14 @@ function formatTimeRemaining(endsAt?: string): string {
   if (diff <= 0) return 'Ended';
   const days = Math.floor(diff / 86400000);
   const hours = Math.floor((diff % 86400000) / 3600000);
-  if (days >= 1) return `Ends in ${days} day${days > 1 ? 's' : ''}`;
-  if (hours >= 1) return `Ends in ${hours} hour${hours > 1 ? 's' : ''}`;
+  if (days >= 1) {
+    const dayStr = days === 1 ? '1 day' : `${days} days`;
+    if (hours > 0) return `Ends in ${dayStr} and ${hours} hr`;
+    return `Ends in ${dayStr}`;
+  }
+  if (hours >= 1) return `Ends in ${hours} hr`;
+  const mins = Math.floor((diff % 3600000) / 60000);
+  if (mins >= 1) return `Ends in ${mins} min`;
   return 'Ends soon';
 }
 
@@ -64,6 +70,7 @@ export function TournamentPotentialSheet({
 }: TournamentPotentialSheetProps) {
   const router = useRouter();
   const { user } = useAuthContext();
+  const { presentPaywall } = usePresentPaywall();
 
   // Per-tournament entered & entering state
   const [enteredIds, setEnteredIds] = useState<Set<string>>(new Set());
@@ -71,9 +78,13 @@ export function TournamentPotentialSheet({
 
   const handleEnterNow = useCallback(async (e: TournamentEligibility) => {
     if (enteredIds.has(e.tournamentId) || enteringId === e.tournamentId) return;
+    if (!user?.id) {
+      Alert.alert('Sign in to enter', 'Create an account or sign in to enter tournaments.');
+      return;
+    }
 
-    const userId = user?.id ?? (mockUserProfile as any).id ?? 'current-user';
-    const username = user?.username ?? user?.displayName ?? (mockUserProfile as any).username ?? 'Angler';
+    const userId = user.id;
+    const username = user.username ?? user.displayName ?? 'Angler';
     const avatarUrl = user?.avatarUrl ?? undefined;
 
     const fish: UserFish = {
@@ -87,7 +98,10 @@ export function TournamentPotentialSheet({
 
     setEnteringId(e.tournamentId);
     try {
-      await enterTournament(e.tournamentId, userId, username, fish, avatarUrl);
+      await enterTournament(e.tournamentId, userId, username, fish, avatarUrl, {
+        logbookCatchId: catchId,
+        userState: user?.state ?? undefined,
+      });
       setEnteredIds((prev) => new Set([...prev, e.tournamentId]));
     } catch (e) {
       if (getProLimitType(e) === 'tournament') {
@@ -96,14 +110,14 @@ export function TournamentPotentialSheet({
           'Upgrade to Pro to enter multiple tournaments.',
           [
             { text: 'OK', style: 'cancel' },
-            { text: 'Upgrade', onPress: () => router.push('/coin-shop') },
+            { text: 'Upgrade', onPress: () => presentPaywall() },
           ]
         );
       }
     } finally {
       setEnteringId(null);
     }
-  }, [router, enteredIds, enteringId, user, catchId, imageUrl, species, weightLbs, lengthIn]);
+  }, [enteredIds, enteringId, user, catchId, imageUrl, species, weightLbs, lengthIn, presentPaywall]);
 
   if (eligibilities.length === 0) return null;
 

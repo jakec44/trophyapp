@@ -1,8 +1,11 @@
+import React, { useRef, useEffect } from 'react';
 import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
+import { useAuthContext } from '@/src/context/AuthContext';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 const TAB_CONFIG = [
   {
     name: 'Home',
@@ -48,20 +51,40 @@ function isRouteActive(pathname: string, route: string): boolean {
   return false;
 }
 
+function measureInWindow(ref: React.RefObject<View>): Promise<{ x: number; y: number; width: number; height: number }> {
+  return new Promise((resolve) => {
+    ref.current?.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }));
+  });
+}
+
 export function CustomTabBar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { user } = useAuthContext();
+  const winContext = useTournamentWinCheckContext();
+  const profileTabRef = useRef<View>(null);
+  const trophyTabRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (!winContext) return;
+    winContext.registerProfileIcon(() => measureInWindow(profileTabRef));
+    winContext.registerTrophyIcon(() => measureInWindow(trophyTabRef));
+  }, [winContext]);
+
   return (
     <View style={styles.container}>
       {TAB_CONFIG.map((tab) => {
         const isActive = isRouteActive(pathname, tab.route);
         const isCenter = tab.isCenter ?? false;
+        const isProfile = tab.name === 'Profile';
+        const isTrophy = tab.name === 'Compete';
 
         const handlePress = () => {
           if (tab.route === '/(tabs)') {
             router.replace('/(tabs)');
           } else if (tab.route === '/(tabs)/log' && tab.isCenter) {
-            router.push('/camera');
+            if (!user?.id) router.replace('/(tabs)/profile');
+            else router.push('/camera');
           } else {
             router.replace(tab.route as any);
           }
@@ -101,24 +124,25 @@ export function CustomTabBar() {
         }
 
         return (
-          <TouchableOpacity
-            key={tab.name}
-            style={styles.tab}
-            onPress={handlePress}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={(isActive ? tab.iconActive : tab.icon) as any}
-              size={24}
-              color={isActive ? colors.teal : 'rgba(214,238,248,0.35)'}
-            />
-            <Text
-              style={[styles.label, isActive && styles.labelActive]}
-              numberOfLines={1}
+          <View key={tab.name} ref={isProfile ? profileTabRef : isTrophy ? trophyTabRef : undefined} style={styles.tab} collapsable={false}>
+            <TouchableOpacity
+              style={styles.tabTouchable}
+              onPress={handlePress}
+              activeOpacity={0.7}
             >
-              {tab.name}
-            </Text>
-          </TouchableOpacity>
+              <Ionicons
+                name={(isActive ? tab.iconActive : tab.icon) as any}
+                size={24}
+                color={isActive ? colors.teal : 'rgba(214,238,248,0.35)'}
+              />
+              <Text
+                style={[styles.label, isActive && styles.labelActive]}
+                numberOfLines={1}
+              >
+                {tab.name}
+              </Text>
+            </TouchableOpacity>
+          </View>
         );
       })}
     </View>
@@ -146,6 +170,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
+  },
+  tabTouchable: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
   centerBtn: {
     flex: 1,

@@ -16,22 +16,15 @@ import {
   XP_TOURNAMENT_WIN,
 } from '@/src/types/gamification';
 
-/** Coins awarded per tournament placement */
-export const COINS_PER_PLACE: Record<1 | 2 | 3, number> = {
-  1: 100,
-  2: 50,
-  3: 25,
-};
 import { addMockTournamentResult } from '@/src/hooks/useTournamentResults';
 import type { TournamentResult } from '@/src/types/tournamentResults';
-import { getUserCatches, syncUserXp, getUserProfile } from '@/src/lib/supabase';
+import { getUserCatchesForPassport, syncUserXp, getUserProfile } from '@/src/lib/supabase';
 import { findPassportSpeciesId } from '@/src/lib/speciesMapper';
 
 function storageKeys(userId: string | null) {
   const prefix = userId ? `@Snagged/user/${userId}` : '@Snagged/guest';
   return {
     xp: `${prefix}/xp`,
-    coins: `${prefix}/coins`,
     totalCatches: `${prefix}/totalCatches`,
     totalTournaments: `${prefix}/totalTournaments`,
     personalRecords: `${prefix}/personalRecords`,
@@ -47,7 +40,6 @@ function getToday(): string {
 export function useGamification(userId: string | null) {
   const keys = storageKeys(userId);
   const [xp, setXp] = useState(0);
-  const [coins, setCoins] = useState(0);
   const [totalCatches, setTotalCatches] = useState(0);
   const [totalTournaments, setTotalTournaments] = useState(0);
   const [personalRecords, setPersonalRecords] = useState(0);
@@ -82,7 +74,7 @@ export function useGamification(userId: string | null) {
     (async () => {
       try {
         if (userId) {
-          const { data: catches } = await getUserCatches(userId, 2000, 0);
+          const { data: catches, total } = await getUserCatchesForPassport(userId, 2000);
           if (cancelled) return;
           const speciesSet = new Set<string>();
           const speciesDates: Record<string, string> = {};
@@ -101,15 +93,14 @@ export function useGamification(userId: string | null) {
           setCaughtSpecies(speciesSet);
           setCaughtSpeciesDates(speciesDates);
           setCaughtSpeciesCount(speciesCount);
-          setTotalCatches(catches.length);
+          setTotalCatches(total);
         } else {
           setTotalCatches(0);
           setCaughtSpeciesCount({});
         }
 
-        const [storedXp, storedCoins, storedTournaments, storedRecords] = await Promise.all([
+        const [storedXp, storedTournaments, storedRecords] = await Promise.all([
           AsyncStorage.getItem(keys.xp),
-          AsyncStorage.getItem(keys.coins),
           AsyncStorage.getItem(keys.totalTournaments),
           AsyncStorage.getItem(keys.personalRecords),
         ]);
@@ -133,7 +124,6 @@ export function useGamification(userId: string | null) {
           setXp(localXp);
         }
 
-        if (storedCoins != null) setCoins(parseInt(storedCoins, 10));
         if (storedTournaments != null) setTotalTournaments(parseInt(storedTournaments, 10));
         if (storedRecords != null) setPersonalRecords(parseInt(storedRecords, 10));
       } catch {}
@@ -142,7 +132,7 @@ export function useGamification(userId: string | null) {
     return () => { cancelled = true; };
   }, [userId, keys.xp, keys.totalTournaments, keys.personalRecords]);
 
-  // Keep Supabase total_xp in sync so global rank queries are accurate
+  // Keep Supabase total_xp in sync for level/XP display
   useEffect(() => {
     if (!userId || !loaded) return;
     syncUserXp(userId, xp).catch(() => {});
@@ -166,14 +156,6 @@ export function useGamification(userId: string | null) {
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub.remove();
   }, [userId, loaded, keys.xp]);
-
-  const addCoins = useCallback(async (amount: number) => {
-    setCoins((prev) => {
-      const next = prev + amount;
-      AsyncStorage.setItem(keys.coins, String(next));
-      return next;
-    });
-  }, [keys.coins]);
 
   const addXp = useCallback(async (amount: number, reason?: 'levelUp') => {
     // Read from ref so we always have the latest value regardless of React's batching
@@ -207,11 +189,11 @@ export function useGamification(userId: string | null) {
   }, [totalTournaments, addXp, keys.totalTournaments]);
 
   /**
-   * Call when the current user places 1st/2nd/3rd in a tournament.
+   * Call when the current user places 1st–5th in a tournament.
    * Awards XP, stores a local mock result so the win screen pops up.
    */
   const onTournamentWin = useCallback(async (
-    place: 1 | 2 | 3,
+    place: 1 | 2 | 3 | 4 | 5,
     tournamentId: string,
     tournamentName: string,
     entry?: {
@@ -224,9 +206,7 @@ export function useGamification(userId: string | null) {
     }
   ) => {
     const xpAmount = XP_TOURNAMENT_WIN[place];
-    const coinsAmount = COINS_PER_PLACE[place];
     await addXp(xpAmount);
-    await addCoins(coinsAmount);
 
     if (!userId) return;
 
@@ -243,13 +223,12 @@ export function useGamification(userId: string | null) {
       length_in: entry?.lengthIn ?? null,
       unit: entry?.unit ?? 'in',
       xp_awarded: xpAmount,
-      coins_awarded: coinsAmount,
       created_at: new Date().toISOString(),
       seen_at: null,
     };
 
     await addMockTournamentResult(result);
-  }, [userId, addXp, addCoins]);
+  }, [userId, addXp]);
 
   const onPersonalRecord = useCallback(async () => {
     const newCount = personalRecords + 1;
@@ -325,13 +304,23 @@ export function useGamification(userId: string | null) {
 
   const dismissLevelUp = useCallback(() => setLevelUpModal(null), []);
 
+  /** Force sync XP from Supabase (e.g. after prestige). Overwrites local with server value. */
+  const refreshXpFromServer = useCallback(async () => {
+    if (!userId) return;
+    const profile = await getUserProfile(userId);
+    const remote = typeof profile?.total_xp === 'number' ? profile.total_xp : 0;
+    xpRef.current = remote;
+    setXp(remote);
+    await AsyncStorage.setItem(keys.xp, String(remote));
+  }, [userId, keys.xp]);
+
   const levelInfo = getLevelFromXp(xp);
 
   return {
     loaded,
     xp,
-    coins,
     levelInfo,
+    refreshXpFromServer,
     totalCatches,
     totalTournaments,
     personalRecords,
@@ -340,7 +329,6 @@ export function useGamification(userId: string | null) {
     caughtSpeciesCount,
     levelUpModal,
     addXp,
-    addCoins,
     onCatchLogged,
     onTournamentEntered,
     onTournamentWin,

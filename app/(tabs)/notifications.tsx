@@ -22,7 +22,7 @@ export default function NotificationsScreen() {
         <Ionicons name="notifications-off-outline" size={48} color={colors.lightSubtext} />
         <Text style={styles.emptyText}>No notifications yet</Text>
         <Text style={styles.emptySubtext}>
-          Activity and updates will appear here.
+          You only get notified when a friend posts a catch or when a tournament you entered has ended.
         </Text>
       </View>
     </SafeAreaView>

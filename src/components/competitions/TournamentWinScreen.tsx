@@ -4,7 +4,7 @@
  * Opens automatically for unseen results; also reachable by tapping a profile badge.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import {
   Modal,
   Share,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -110,7 +111,10 @@ export function TournamentWinScreen({ result, username, avatarUrl, visible, onCl
 
   const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.28, 0.65] });
 
-  const handleShare = async () => {
+  const shareInProgress = useRef(false);
+  const handleShare = useCallback(() => {
+    if (shareInProgress.current) return;
+    shareInProgress.current = true;
     const metric =
       result.unit === 'lbs' && result.weight_lbs
         ? `${result.weight_lbs} lbs`
@@ -118,8 +122,10 @@ export function TournamentWinScreen({ result, username, avatarUrl, visible, onCl
           ? `${result.length_in} in`
           : '';
     const msg = `🏆 I just placed ${palette.label} in the ${result.tournament_name} tournament on Snagged!${metric ? ` (${metric})` : ''} 🎣`;
-    try { await Share.share({ message: msg }); } catch {}
-  };
+    InteractionManager.runAfterInteractions(() => {
+      Share.share({ message: msg }).catch(() => {}).finally(() => { shareInProgress.current = false; });
+    });
+  }, [result, palette.label]);
 
   const hasFishPhoto = !!result.fish_photo_url;
 
@@ -160,16 +166,16 @@ export function TournamentWinScreen({ result, username, avatarUrl, visible, onCl
               <Text style={styles.placeMedal}>{palette.medal}</Text>
               <Text style={[styles.placeLabel, { color: palette.primary }]}>{palette.label.toUpperCase()}</Text>
             </View>
-            {/* Reward chips top-right */}
+            {/* Reward chips top-right: Trophies + XP (same colors) */}
             <View style={styles.chipStack}>
               <View style={styles.xpChip}>
+                <Ionicons name="trophy" size={14} color="#00e5c8" />
+                <Text style={styles.xpChipTxt}>+{result.xp_awarded} Trophies</Text>
+              </View>
+              <View style={styles.xpChip}>
+                <Ionicons name="star" size={14} color="#00e5c8" />
                 <Text style={styles.xpChipTxt}>+{result.xp_awarded} XP</Text>
               </View>
-              {result.coins_awarded != null && result.coins_awarded > 0 && (
-                <View style={styles.coinsChip}>
-                  <Text style={styles.coinsChipTxt}>💰 +{result.coins_awarded}</Text>
-                </View>
-              )}
             </View>
           </View>
 
@@ -267,7 +273,7 @@ const styles = StyleSheet.create({
   },
   fishWrap: {
     width: '100%',
-    height: CARD_W * 0.72,
+    height: CARD_W * 0.9,
     borderBottomWidth: 1.5,
     position: 'relative',
   },
@@ -307,6 +313,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   xpChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: 'rgba(0,229,200,0.15)',
     borderWidth: 1,
     borderColor: 'rgba(0,229,200,0.45)',
@@ -318,19 +327,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: '#00e5c8',
-  },
-  coinsChip: {
-    backgroundColor: 'rgba(255,184,0,0.18)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,184,0,0.5)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  coinsChipTxt: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#FFB800',
   },
   content: {
     padding: 18,

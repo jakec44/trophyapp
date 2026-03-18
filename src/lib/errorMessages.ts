@@ -17,6 +17,15 @@ export function toFriendlyMessage(error: unknown): string {
 
   if (error instanceof Error) {
     const msg = error.message || '';
+    if (msg.includes('Tournament cycle has ended') || msg.includes('wait for next cycle')) {
+      return 'This tournament cycle has ended. A new cycle will start soon—try again then.';
+    }
+    if (msg.includes('Must be signed in') || msg.includes('sign in')) {
+      return 'Please sign in to enter a tournament.';
+    }
+    if (msg.includes('Tournament not found')) {
+      return 'This tournament is no longer available.';
+    }
     if (msg.toLowerCase().includes('unique') || msg.includes('duplicate') || msg.includes('already exists') || msg.includes('username')) {
       return 'This username is already taken. Try another.';
     }
@@ -28,6 +37,9 @@ export function toFriendlyMessage(error: unknown): string {
     }
     if (msg.toLowerCase().includes('network') || msg.includes('fetch')) {
       return 'Network error. Check your connection.';
+    }
+    if (msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('took too long') || msg.toLowerCase().includes('upload timed out')) {
+      return 'Request timed out. Check your connection and try again.';
     }
     if (msg.length > 80) {
       return 'Something went wrong. Please try again.';

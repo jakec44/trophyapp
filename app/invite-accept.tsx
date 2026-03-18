@@ -1,49 +1,60 @@
 /**
  * Deep link: Snagged://invite?token=XYZ
- * Accept Friend Invite screen — when invited user opens app via link
+ * Accept Friend Invite screen — token is the invite code.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
-
-const INVITER_PLACEHOLDER = 'A fellow angler';
+import { useAuthContext } from '@/src/context/AuthContext';
+import { redeemInviteCode } from '@/src/lib/supabase';
 
 export default function InviteAcceptScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ token?: string }>();
-  const token = params.token;
-  const [inviterName, setInviterName] = useState(INVITER_PLACEHOLDER);
+  const token = (params.token as string | undefined)?.trim();
+  const { user } = useAuthContext();
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // TODO: Fetch inviter name from Supabase using token
-    if (token) {
-      setInviterName(INVITER_PLACEHOLDER);
+  const handleAccept = async () => {
+    if (!token) {
+      Alert.alert('Invalid invite', 'This invite link is invalid or expired.');
+      return;
     }
-  }, [token]);
-
-  const handleAccept = () => {
+    if (!user?.id) {
+      router.replace('/(auth)/sign-in');
+      return;
+    }
     setLoading(true);
-    // TODO: Create friendship in Supabase
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await redeemInviteCode(token, user.id);
       router.replace('/(tabs)');
-    }, 600);
+    } catch (e) {
+      Alert.alert('Could not accept', (e as Error).message ?? 'Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDecline = () => {
     router.back();
   };
+
+  const handleSignIn = () => {
+    router.replace('/(auth)/sign-in');
+  };
+
+  const needsSignIn = !user?.id;
+  const invalidInvite = !token;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -51,30 +62,54 @@ export default function InviteAcceptScreen() {
         <View style={styles.iconWrap}>
           <Text style={styles.iconEmoji}>🤝</Text>
         </View>
-        <Text style={styles.title}>{inviterName} wants to add you</Text>
+        {invalidInvite ? (
+          <Text style={styles.title}>Invalid invite link</Text>
+        ) : (
+          <Text style={styles.title}>A fellow angler wants to add you</Text>
+        )}
         <Text style={styles.subtitle}>
-          Connect as friends to share catches and compete in challenges.
+          {invalidInvite
+            ? 'This link may be expired or incorrect.'
+            : needsSignIn
+              ? 'Sign in to accept and connect as friends.'
+              : 'Connect as friends to share catches and compete in challenges.'}
         </Text>
 
         <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.acceptBtn, loading && styles.btnDisabled]}
-            onPress={handleAccept}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFF" />
-            ) : (
-              <Text style={styles.acceptBtnText}>Accept</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.declineBtn}
-            onPress={handleDecline}
-            disabled={loading}
-          >
-            <Text style={styles.declineBtnText}>Decline</Text>
-          </TouchableOpacity>
+          {invalidInvite ? (
+            <TouchableOpacity style={styles.declineBtn} onPress={handleDecline}>
+              <Text style={styles.declineBtnText}>Go back</Text>
+            </TouchableOpacity>
+          ) : needsSignIn ? (
+            <TouchableOpacity
+              style={[styles.acceptBtn, loading && styles.btnDisabled]}
+              onPress={handleSignIn}
+              disabled={loading}
+            >
+              <Text style={styles.acceptBtnText}>Sign in</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.acceptBtn, loading && styles.btnDisabled]}
+              onPress={handleAccept}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.acceptBtnText}>Accept</Text>
+              )}
+            </TouchableOpacity>
+          )}
+          {!invalidInvite && (
+            <TouchableOpacity
+              style={styles.declineBtn}
+              onPress={handleDecline}
+              disabled={loading}
+            >
+              <Text style={styles.declineBtnText}>Decline</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     </SafeAreaView>

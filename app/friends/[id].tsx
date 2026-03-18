@@ -22,11 +22,13 @@ import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import { isValidImageUri } from '@/src/lib/imageUri';
+import { useAuthContext } from '@/src/context/AuthContext';
 import { useFriendsContext } from '@/src/context/FriendsContext';
 import { useBottomSafePadding } from '@/src/components/ScreenContainer';
 
 export default function FriendProfileScreen() {
   const router = useRouter();
+  const { user } = useAuthContext();
   const { id } = useLocalSearchParams<{ id: string }>();
   const bottomPadding = useBottomSafePadding();
   const { friends, removeFriend } = useFriendsContext();
@@ -53,9 +55,14 @@ export default function FriendProfileScreen() {
   };
 
   const handleMessage = () => {
+    if (!user?.id) {
+      router.replace('/(tabs)/profile');
+      return;
+    }
     const uid = friend?.userId ?? id;
     const dname = encodeURIComponent(friend?.displayName ?? 'Friend');
-    router.push(`/chat/${uid}?displayName=${dname}`);
+    const av = friend?.avatar ? encodeURIComponent(friend.avatar) : '';
+    router.push(`/chat/${uid}?displayName=${dname}${av ? `&avatarUrl=${av}` : ''}`);
   };
 
   if (!friend) {

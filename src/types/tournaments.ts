@@ -10,6 +10,7 @@ export type TournamentType =
   | 'BIGGEST_FLOUNDER'
   | 'BIGGEST_STRIPER'
   | 'BIGGEST_TARPON'
+  | 'BIGGEST_TROUT'
   | 'SMALLEST_FISH';
 
 export type MetricType = 'WEIGHT_LBS' | 'LENGTH_IN' | 'VOTES_UP';
@@ -36,6 +37,23 @@ export interface FishEntry {
   /** Supabase catch id; cleared when entry is deleted */
   logbookCatchId?: string | null;
   proVerified?: boolean;
+  /** User level from total_xp (for display) */
+  authorLevel?: number;
+  /** Angler rating (for display) */
+  authorAnglerRating?: number;
+  /** Pinned badges from user_profile_display_items (for showing next to username) */
+  displayItems?: Array<{
+    type: string;
+    id: string;
+    badgeKey?: string;
+    label: string;
+    icon?: string;
+    rarity?: 'COMMON' | 'RARE' | 'EPIC' | 'MYTHIC';
+    trophyId?: string;
+    tournamentName?: string;
+    place?: 1 | 2 | 3;
+    imageUrl?: string;
+  }>;
 }
 
 export interface Tournament {

@@ -1,6 +1,10 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
+// Load .env.local first so it overrides .env (Metro needs EXPO_PUBLIC_* for the bundle; works even with plain npx expo start)
+require('dotenv').config({ path: path.resolve(__dirname, '.env.local') });
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+
 const config = getDefaultConfig(__dirname);
 
 // Prevent Metro from resolving into api/ (separate Node server)

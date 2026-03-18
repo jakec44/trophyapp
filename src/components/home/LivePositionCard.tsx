@@ -57,7 +57,7 @@ export function LivePositionCard({ data }: LivePositionCardProps) {
 
       <View style={styles.rankRow}>
         <Text style={styles.rankNumber}>#{data.rank}</Text>
-        <Text style={styles.globalLabel}>Global</Text>
+        <Text numberOfLines={1} style={styles.globalLabel}>Global</Text>
       </View>
 
       <View style={styles.movementRow}>

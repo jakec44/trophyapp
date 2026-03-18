@@ -22,9 +22,11 @@ import {
   Keyboard,
   Switch,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/utils/colors';
 import { PASSPORT_SPECIES } from '@/utils/gamificationData';
 import type { CatchDraft } from '@/src/hooks/useCatchDraft';
@@ -40,9 +42,13 @@ const TEAL = colors.teal;
 
 type Step = 0 | 1 | 2 | 3;
 
+export type ShareMediaItem = { uri: string; type: 'image' | 'video' };
+
 export interface LogCatchContentProps {
   draft: CatchDraft;
   shareToFeed: boolean;
+  shareCaption: string;
+  shareMedia: ShareMediaItem[];
   isSubmitting: boolean;
   errorMessage: string | null;
   showSpeciesPicker: boolean;
@@ -59,6 +65,8 @@ export interface LogCatchContentProps {
   onLengthChange: (l: string) => void;
   onNotesChange: (n: string) => void;
   onShareChange: (v: boolean) => void;
+  onShareCaptionChange: (s: string) => void;
+  onShareMediaChange: (m: ShareMediaItem[]) => void;
   onNewSpeciesChange: (v: boolean) => void;
   onShowSpeciesPicker: () => void;
   onShowSpeciesPickerChange: (v: boolean) => void;
@@ -77,9 +85,31 @@ export function getRarityColor(rarity: string): string {
   }
 }
 
+const MAX_SHARE_MEDIA = 5;
+const SHARE_THUMB = (SW - 32 - 12 * (3 - 1)) / 3;
+
+function CaptionPreview({ text }: { text: string }) {
+  const parts = text.split(/(#\w+)/g);
+  return (
+    <Text style={captionPreviewStyles.text}>
+      {parts.map((part, i) =>
+        part.startsWith('#')
+          ? <Text key={i} style={captionPreviewStyles.tag}>{part}</Text>
+          : part
+      )}
+    </Text>
+  );
+}
+const captionPreviewStyles = StyleSheet.create({
+  text: { fontSize: 14, color: '#fff', lineHeight: 20 },
+  tag:  { color: TEAL, fontWeight: '700' },
+});
+
 export function LogCatchContent({
   draft,
   shareToFeed,
+  shareCaption,
+  shareMedia,
   isSubmitting,
   caughtSpecies,
   bottomPadding,
@@ -92,6 +122,8 @@ export function LogCatchContent({
   onLengthChange,
   onNotesChange,
   onShareChange,
+  onShareCaptionChange,
+  onShareMediaChange,
   onNewSpeciesChange,
   onSubmit,
 }: LogCatchContentProps) {
@@ -164,6 +196,42 @@ export function LogCatchContent({
   );
 
   const hasPhoto = !!draft.photoUri;
+  const maxExtraMedia = draft.photoUri ? MAX_SHARE_MEDIA - 1 : MAX_SHARE_MEDIA;
+
+  const pickShareMedia = useCallback(async () => {
+    if (shareMedia.length >= maxExtraMedia) {
+      Alert.alert('Limit reached', `You can add up to ${maxExtraMedia} extra photo${maxExtraMedia === 1 ? '' : 's'} or video${maxExtraMedia === 1 ? '' : 's'}.`);
+      return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow access to your photo library to add media.');
+      return;
+    }
+    const remaining = maxExtraMedia - shareMedia.length;
+    // When picking one, allow crop; multi-select doesn't support crop on iOS.
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsMultipleSelection: remaining > 1,
+      selectionLimit: remaining,
+      allowsEditing: remaining === 1,
+      aspect: remaining === 1 ? [1, 1] : undefined,
+      quality: 0.85,
+      orderedSelection: true,
+    });
+    if (!result.canceled) {
+      const picked: ShareMediaItem[] = result.assets.map((a) => ({
+        uri: a.uri,
+        type: a.type === 'video' ? 'video' : 'image',
+      }));
+      onShareMediaChange([...shareMedia, ...picked].slice(0, maxExtraMedia));
+    }
+  }, [shareMedia, maxExtraMedia, onShareMediaChange]);
+
+  const removeShareMedia = useCallback(
+    (idx: number) => onShareMediaChange(shareMedia.filter((_, i) => i !== idx)),
+    [shareMedia, onShareMediaChange]
+  );
 
   // ── Shared header (Snagged title + step dots + dismiss keyboard + optional skip) ──
   const renderHeader = (onSkip?: () => void) => (
@@ -244,6 +312,7 @@ export function LogCatchContent({
             )}
           </View>
 
+          <Text style={styles.aiComingSoonStep0}>AI identifier coming soon</Text>
           {/* Photo action buttons */}
           <View style={styles.photoBtns}>
             <TouchableOpacity style={[styles.photoBtn, styles.photoBtnPrimary]} onPress={onTakePhoto}>
@@ -312,6 +381,7 @@ export function LogCatchContent({
         {/* Search bar pinned below header */}
         <View style={styles.searchSection}>
           <Text style={styles.searchLabel}>Search Species</Text>
+          <Text style={styles.aiComingSoon}>AI identifier coming soon</Text>
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={20} color={TEAL} />
             <TextInput
@@ -428,6 +498,7 @@ export function LogCatchContent({
         )}
 
         {/* Weight & Length */}
+        <Text style={styles.aiTrackerComingSoon}>AI tracker coming soon</Text>
         <View style={styles.row}>
           <View style={styles.halfGroup}>
             <Text style={styles.fieldLabel}>Weight (lbs)</Text>
@@ -479,6 +550,67 @@ export function LogCatchContent({
             thumbColor={shareToFeed ? TEAL : '#888'}
           />
         </View>
+
+        {/* Share caption + extra media (when Share to feed is on) */}
+        {shareToFeed && (
+          <>
+            <View style={styles.shareCaptionSection}>
+              <View style={styles.shareCaptionRow}>
+                <Feather name="edit-3" size={16} color="rgba(255,255,255,0.35)" style={{ marginTop: 3 }} />
+                <TextInput
+                  style={styles.shareCaptionInput}
+                  placeholder="Write a caption… use #hashtags"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  value={shareCaption}
+                  onChangeText={onShareCaptionChange}
+                  multiline
+                  maxLength={500}
+                  returnKeyType="default"
+                  textAlignVertical="top"
+                />
+              </View>
+              <Text style={styles.shareCharCount}>{shareCaption.length}/500</Text>
+            </View>
+            {shareCaption.includes('#') && (
+              <View style={styles.sharePreviewBox}>
+                <Text style={styles.sharePreviewLabel}>Preview</Text>
+                <CaptionPreview text={shareCaption} />
+              </View>
+            )}
+            <View style={styles.shareMediaSection}>
+              <Text style={styles.shareMediaLabel}>Add photos or videos</Text>
+              <View style={styles.shareMediaGrid}>
+                {shareMedia.map((item, idx) => (
+                  <View key={idx} style={styles.shareThumb}>
+                    {item.type === 'video' ? (
+                      <View style={styles.shareVideoThumb}>
+                        <Ionicons name="videocam" size={24} color="rgba(255,255,255,0.7)" />
+                        <Text style={styles.shareVideoLabel}>Video</Text>
+                      </View>
+                    ) : (
+                      <Image source={{ uri: item.uri }} style={styles.shareThumbImg} resizeMode="cover" />
+                    )}
+                    <TouchableOpacity
+                      style={styles.shareRemoveBtn}
+                      onPress={() => removeShareMedia(idx)}
+                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {shareMedia.length < maxExtraMedia && (
+                  <TouchableOpacity style={styles.shareAddTile} onPress={pickShareMedia} activeOpacity={0.75}>
+                    <Ionicons name="add" size={28} color={TEAL} />
+                    <Text style={styles.shareAddTileTxt}>
+                      {shareMedia.length === 0 ? 'Add' : `+${maxExtraMedia - shareMedia.length}`}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </>
+        )}
 
         {/* Submit — Pressable for reliable web clicks */}
         <Pressable
@@ -612,6 +744,13 @@ const styles = StyleSheet.create({
   photoBtnOutlineTxt: { fontSize: 15, fontWeight: '600', color: TEAL },
   skipPhotoBtn: { alignSelf: 'center', paddingVertical: 18, paddingHorizontal: 24 },
   skipPhotoTxt: { fontSize: 14, color: colors.lightSubtext, fontWeight: '500' },
+  aiComingSoonStep0: {
+    fontSize: 13,
+    color: colors.lightSubtext,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
 
   // ── Compact strip (steps 1–3) ─────────────────────────────────────────
   strip: {
@@ -703,6 +842,12 @@ const styles = StyleSheet.create({
     color: colors.lightSubtext,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  aiComingSoon: {
+    fontSize: 13,
+    color: colors.lightSubtext,
+    fontStyle: 'italic',
     marginBottom: 8,
   },
   searchWrap: {
@@ -771,6 +916,13 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
   },
   addSpeciesTxt: { fontSize: 14, fontWeight: '500', color: TEAL },
+  aiTrackerComingSoon: {
+    fontSize: 13,
+    color: colors.lightSubtext,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
   row: { flexDirection: 'row', gap: 12 },
   halfGroup: { flex: 1 },
   shareRow: {
@@ -788,6 +940,89 @@ const styles = StyleSheet.create({
   shareLeft: { flex: 1 },
   shareLabel: { fontSize: 16, fontWeight: '600', color: colors.lightText },
   shareHint: { fontSize: 12, color: TEAL, marginTop: 3, fontWeight: '500' },
+
+  shareCaptionSection: { marginTop: 12, marginBottom: 8 },
+  shareCaptionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    padding: 12,
+  },
+  shareCaptionInput: {
+    flex: 1,
+    fontSize: 15,
+    color: '#fff',
+    minHeight: 72,
+    lineHeight: 22,
+  },
+  shareCharCount: {
+    textAlign: 'right',
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.25)',
+    marginTop: 6,
+  },
+  sharePreviewBox: {
+    marginTop: 8,
+    marginBottom: 8,
+    padding: 10,
+    backgroundColor: 'rgba(0,229,200,0.06)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: TEAL + '30',
+    gap: 4,
+  },
+  sharePreviewLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: TEAL,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  shareMediaSection: { marginTop: 8, marginBottom: 16 },
+  shareMediaLabel: { fontSize: 13, fontWeight: '600', color: colors.lightSubtext, marginBottom: 8 },
+  shareMediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  shareThumb: {
+    width: SHARE_THUMB,
+    height: SHARE_THUMB,
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#1a2535',
+    position: 'relative',
+  },
+  shareThumbImg: { width: '100%', height: '100%' },
+  shareVideoThumb: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0f1e2e',
+    gap: 2,
+  },
+  shareVideoLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
+  shareRemoveBtn: { position: 'absolute', top: 4, right: 4 },
+  shareAddTile: {
+    width: SHARE_THUMB,
+    height: SHARE_THUMB,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: TEAL + '50',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: TEAL + '08',
+  },
+  shareAddTileTxt: { fontSize: 12, color: TEAL, fontWeight: '600' },
+
   submitBtn: {
     flexDirection: 'row',
     alignItems: 'center',

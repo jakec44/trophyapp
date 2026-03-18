@@ -23,8 +23,6 @@ export function YourFishCouldPlaceCard({
   const router = useRouter();
 
   const handleEnter = () => {
-    // TODO: Route to entry submission with prefilled fish
-    // For now: navigate to tournament detail
     router.push(`/tournament/${tournamentId}`);
   };
 

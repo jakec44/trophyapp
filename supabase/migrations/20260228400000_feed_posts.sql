@@ -1,7 +1,7 @@
 -- Feed posts: user-created posts visible on profile and feed.
 -- photo_path = storage path in media bucket; photo_url = fallback for external URLs.
 
-CREATE TABLE feed_posts (
+CREATE TABLE IF NOT EXISTS feed_posts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   photo_path TEXT,
@@ -17,23 +17,23 @@ CREATE TABLE feed_posts (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX idx_feed_posts_user_id ON feed_posts(user_id);
-CREATE INDEX idx_feed_posts_created_at ON feed_posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_feed_posts_user_id ON feed_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_feed_posts_created_at ON feed_posts(created_at DESC);
 
 ALTER TABLE feed_posts ENABLE ROW LEVEL SECURITY;
 
--- Anyone can read feed posts (public profile grid)
+DROP POLICY IF EXISTS "Feed posts are publicly readable" ON feed_posts;
 CREATE POLICY "Feed posts are publicly readable"
   ON feed_posts FOR SELECT USING (true);
 
--- Users can insert their own posts
+DROP POLICY IF EXISTS "Users can insert own feed posts" ON feed_posts;
 CREATE POLICY "Users can insert own feed posts"
   ON feed_posts FOR INSERT WITH CHECK (auth.uid() = user_id);
 
--- Users can update their own posts (hype/comment counts or caption edits)
+DROP POLICY IF EXISTS "Users can update own feed posts" ON feed_posts;
 CREATE POLICY "Users can update own feed posts"
   ON feed_posts FOR UPDATE USING (auth.uid() = user_id);
 
--- Users can delete their own posts
+DROP POLICY IF EXISTS "Users can delete own feed posts" ON feed_posts;
 CREATE POLICY "Users can delete own feed posts"
   ON feed_posts FOR DELETE USING (auth.uid() = user_id);

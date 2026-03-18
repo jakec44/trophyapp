@@ -1,12 +1,10 @@
 /**
- * Root index: redirects to tabs (signed in) or auth (signed out).
- * Prevents showing auth screen when user is already signed in.
+ * Root index: always send to tabs. Signed-out users can browse;
+ * sign-in is requested via AuthGateModal when they try to log fish, enter tournaments, etc.
  */
 
 import { Redirect } from 'expo-router';
-import { useAuthContext } from '@/src/context/AuthContext';
 
 export default function Index() {
-  const { isSignedIn } = useAuthContext();
-  return isSignedIn ? <Redirect href="/(tabs)" /> : <Redirect href="/(auth)/sign-in" />;
+  return <Redirect href="/(tabs)" />;
 }

@@ -50,6 +50,7 @@ export interface FeedPost {
   feedSource: FeedSource;
   hypeCount: number;
   commentCount: number;
+  shareCount?: number;
   isHyped: boolean;
   tournamentRank?: number; // e.g. 3 for "This puts them at #3 this week"
   comments: FeedComment[];
@@ -61,6 +62,23 @@ export interface FeedPost {
   currentRank?: number;
   xpGained?: number;
   proVerified?: boolean;
+  /** Author level (from total_xp) */
+  authorLevel?: number;
+  /** Author angler rating */
+  authorAnglerRating?: number;
+  /** Pinned badges for the post author (from user_profile_display_items) */
+  authorDisplayItems?: Array<{
+    type: string;
+    id: string;
+    badgeKey?: string;
+    label: string;
+    icon?: string;
+    rarity?: 'COMMON' | 'RARE' | 'EPIC' | 'MYTHIC';
+    trophyId?: string;
+    tournamentName?: string;
+    place?: 1 | 2 | 3;
+    imageUrl?: string;
+  }>;
 }
 
 export interface StoryItem {

@@ -101,7 +101,7 @@ export default function CatchDetailScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ParticleBackground />
       <View style={styles.headerBar}>
-        <Text style={styles.headerSnagged}>Snagged</Text>
+        <SnaggedWordmark />
         {id && (
           <TouchableOpacity
             onPress={() => toggleFavorite(id)}
@@ -180,12 +180,6 @@ const styles = StyleSheet.create({
   },
   favoriteBtn: {
     padding: 4,
-  },
-  headerSnagged: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 22,
-    color: '#00e5c8',
-    letterSpacing: 2,
   },
   loadingState: {
     flex: 1,

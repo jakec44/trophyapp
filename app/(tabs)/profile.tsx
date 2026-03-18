@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,9 @@ import {
   Share,
   Alert,
   ActivityIndicator,
+  Animated,
+  Easing,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
@@ -20,23 +23,27 @@ import { useAuthContext } from '@/src/context/AuthContext';
 import {
   getUserProfile,
   updateUserProfile,
-  getUserGlobalRank,
+  getAnglerRank,
 } from '@/src/lib/supabase';
 import { mediaPath } from '@/src/lib/mediaPaths';
 import { uploadImageAsJpegToStorage } from '@/src/lib/supabase';
 import { LevelRoadmapModal } from '@/src/components/gamification/LevelRoadmapModal';
-import { MAX_LEVEL, LEVEL_UNLOCKS, LEVEL_ROADMAP } from '@/src/types/gamification';
+import { MAX_LEVEL, MAX_PRESTIGE, LEVEL_UNLOCKS, LEVEL_ROADMAP } from '@/src/types/gamification';
 import { PLACE_PALETTE } from '@/src/types/tournamentResults';
 import { ProfileHeader, type EarnedBadgeItem } from '@/src/components/profile/ProfileHeader';
-import { BadgePickerModal } from '@/src/components/profile/BadgePickerModal';
 import { useDisplayBadges } from '@/src/hooks/useDisplayBadges';
+import { useProfileDisplayItems } from '@/src/hooks/useProfileDisplayItems';
 import { ProfileStoriesSection } from '@/src/components/profile/ProfileStoriesSection';
-import { ProfileBadges } from '@/src/components/profile/ProfileBadges';
+import { DisplayBadgesSheet, type DisplaySelectionItem } from '@/src/components/profile/DisplayBadgesSheet';
+import { TrophyDetailModal, TrophyViewOnlyModal } from '@/src/components/profile/TrophyDetailModal';
+import { BadgeDetailModal } from '@/src/components/profile/BadgeDetailModal';
+import { getBadgeDisplayInfo, getUnlockCatchesForBadge } from '@/src/lib/speciesMastery';
 import { StoryViewerModal } from '@/src/components/profile/StoryViewerModal';
 import { StoryComposer } from '@/src/components/profile/StoryComposer';
 import { useBottomSafePadding } from '@/src/components/ScreenContainer';
 import { useMyStories, useViewedStories } from '@/src/hooks/useStories';
 import { useTournamentResults } from '@/src/hooks/useTournamentResults';
+import { useSpeciesBadges } from '@/src/hooks/useSpeciesBadges';
 import { useFriendsContext } from '@/src/context/FriendsContext';
 import { useFeedContext } from '@/src/context/FeedContext';
 import { ProfilePostsGrid } from '@/src/components/profile/ProfilePostsGrid';
@@ -44,9 +51,60 @@ import { useUserFeedPosts } from '@/src/hooks/useUserFeedPosts';
 import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { devLog, isDev } from '@/src/lib/env';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { consumePendingFlyReward } from '@/src/lib/flyRewardStore';
+import { AuthGateModal } from '@/src/components/auth/AuthGateModal';
+
+const ONBOARDING_FIRST_CATCH_PENDING = 'onboarding_first_catch_pending';
 
 const GOLD = colors.gold;
 const ACCENT_BLUE = colors.accentBlue;
+
+const XP_ICON = '⭐';
+const FLY_COUNT = isDev ? 5 : 10;
+
+function useFlyRewardAnimation() {
+  const [flyReward, setFlyReward] = useState<{ xp: number } | null>(null);
+  const xpAnims = useRef(
+    Array.from({ length: FLY_COUNT }, () => ({
+      x: new Animated.Value(0),
+      y: new Animated.Value(0),
+      opacity: new Animated.Value(1),
+    }))
+  ).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      const reward = consumePendingFlyReward();
+      if (!reward || reward.xp <= 0) return;
+      setFlyReward(reward);
+      const SW = 360;
+      const XP_TARGET = { x: -SW * 0.25, y: 50 };
+      const run = (anim: { x: Animated.Value; y: Animated.Value; opacity: Animated.Value }, tx: number, ty: number, delay: number) => {
+        anim.x.setValue(0);
+        anim.y.setValue(0);
+        anim.opacity.setValue(1);
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.parallel([
+            Animated.timing(anim.x, { toValue: tx, duration: 700, useNativeDriver: true, easing: Easing.out(Easing.cubic) }),
+            Animated.timing(anim.y, { toValue: ty, duration: 700, useNativeDriver: true, easing: Easing.in(Easing.quad) }),
+          ]),
+          Animated.timing(anim.opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        ]).start();
+      };
+      const jitter = () => (Math.random() - 0.5) * 20;
+      for (let i = 0; i < FLY_COUNT; i++) {
+        run(xpAnims[i], XP_TARGET.x + jitter(), XP_TARGET.y + jitter(), i * 40);
+      }
+      const t = setTimeout(() => setFlyReward(null), 1600);
+      return () => clearTimeout(t);
+    }, [])
+  );
+
+  return { flyReward, xpAnims };
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -56,15 +114,17 @@ export default function ProfileScreen() {
   const [levelRoadmapVisible, setLevelRoadmapVisible] = useState(false);
   const [bannerUri, setBannerUri] = useState<string | null>(null);
 
+  const { flyReward, xpAnims } = useFlyRewardAnimation();
+
   const handleBannerChange = async (uri: string) => {
     setBannerUri(uri);
     if (!user?.id) return;
     try {
       const path = mediaPath.banner(user.id);
-      console.log('[MEDIA] banner upload start', { bucket: 'media', path });
+      devLog('[MEDIA] banner upload start', { bucket: 'media', path });
       await uploadImageAsJpegToStorage('media', path, uri);
       await updateUserProfile(user.id, { banner_url: path });
-      console.log('[MEDIA] banner upload complete', { bucket: 'media', path });
+      devLog('[MEDIA] banner upload complete', { bucket: 'media', path });
       await refreshProfile();
     } catch (e) {
       console.error('[MEDIA] banner upload failed:', e);
@@ -77,9 +137,20 @@ export default function ProfileScreen() {
   const allStoriesViewed = myStories.length > 0 && myStories.every((s) => viewedIds.has(s.id));
 
   const { allResults: tournamentResults, refresh: refreshTournamentResults } = useTournamentResults(user?.id ?? null);
+  const { badges: speciesBadges, refresh: refreshSpeciesBadges } = useSpeciesBadges(user?.id ?? null);
   const { friends } = useFriendsContext();
   const { displayedIds: displayedBadgeIds, setDisplayedIds: setDisplayedBadgeIds } = useDisplayBadges(user?.id);
+  const { items: profileDisplayItems, trophies: userTrophies, save: saveProfileDisplayItems, refresh: refreshDisplayItems } = useProfileDisplayItems(user?.id ?? null);
   const [showBadgePicker, setShowBadgePicker] = useState(false);
+  const [selectedTrophyForModal, setSelectedTrophyForModal] = useState<import('@/src/lib/supabase').TrophyWithDetails | null>(null);
+  const [selectedTrophyViewOnly, setSelectedTrophyViewOnly] = useState<import('@/src/components/profile/TrophyDetailModal').TrophyViewOnlyPayload | null>(null);
+  const [selectedBadgeForModal, setSelectedBadgeForModal] = useState<{
+    name: string;
+    unlockHint: string;
+    rarity: import('@/src/types/badgeRarity').BadgeRarity;
+    badgeKey: string;
+    unlockCatches: import('@/src/lib/speciesMastery').UnlockCatch[];
+  } | null>(null);
 
   const earnedBadges = useMemo((): EarnedBadgeItem[] => {
     const list: EarnedBadgeItem[] = [];
@@ -97,21 +168,51 @@ export default function ProfileScreen() {
     tournamentResults.forEach((r) => {
       const palette = PLACE_PALETTE[r.place];
       list.push({
-        id: `tournament-${r.id}`,
+        id: `tournament-${r.place}-${r.id}`,
         label: `${r.tournament_name} · ${palette.label}`,
-        icon: palette.medal,
+        icon: '🏆',
       });
     });
+    list.push(...speciesBadges);
     return list;
-  }, [gamification.levelInfo?.level, tournamentResults]);
+  }, [gamification.levelInfo?.level, tournamentResults, speciesBadges]);
 
-  const [globalRank, setGlobalRank] = useState<number | null>(null);
+  const displayItemsWithLabels = useMemo(() => {
+    return profileDisplayItems.map((item) => {
+      if (item.type === 'badge') {
+        const earned = earnedBadges.find((b) => b.id === item.badgeKey || b.id === `badge-${item.badgeKey}`);
+        return { ...item, label: earned?.label ?? item.label, icon: earned?.icon ?? item.icon };
+      }
+      return item;
+    });
+  }, [profileDisplayItems, earnedBadges]);
 
-  const fetchGlobalRank = useCallback(async () => {
+  const displaySheetInitialSelection = useMemo((): DisplaySelectionItem[] => {
+    return profileDisplayItems.map((item) => {
+      if (item.type === 'badge') return { type: 'badge', badge_key: item.badgeKey };
+      if (item.type === 'trophy' && item.trophyId.startsWith('tournament-')) return { type: 'badge', badge_key: item.trophyId };
+      return { type: 'trophy', trophy_id: item.trophyId };
+    });
+  }, [profileDisplayItems]);
+
+  const [arRank, setArRank] = useState<number | null | undefined>(undefined);
+  const [localRank, setLocalRank] = useState<number | null | undefined>(undefined);
+  const [anglerRating, setAnglerRating] = useState<number>(0);
+  const [prestige, setPrestige] = useState<number>(0);
+
+  const fetchARRank = useCallback(async () => {
     if (!user?.id) return;
-    const rank = await getUserGlobalRank(user.id);
-    setGlobalRank(rank);
-  }, [user?.id]);
+    const profile = await getUserProfile(user.id);
+    const p = profile as { angler_rating?: number; prestige?: number };
+    setAnglerRating(p?.angler_rating ?? 0);
+    setPrestige(Math.min(MAX_PRESTIGE, Math.max(0, p?.prestige ?? 0)));
+    const [globalResult, localResult] = await Promise.all([
+      getAnglerRank(user.id, 'global', null),
+      user?.state ? getAnglerRank(user.id, 'local', user.state) : Promise.resolve({ rank: null }),
+    ]);
+    setArRank(globalResult.rank);
+    setLocalRank(localResult?.rank ?? null);
+  }, [user?.id, user?.state]);
 
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileData, setProfileData] = useState<{
@@ -142,14 +243,26 @@ export default function ProfileScreen() {
       refreshMyStories();
       refreshViewedIds();
       refreshTournamentResults();
-      fetchGlobalRank();
+      refreshSpeciesBadges();
+      fetchARRank();
       refreshMyPosts();
       if (user?.id && gamification.loaded) loadProfile();
-    }, [refreshMyStories, refreshViewedIds, refreshTournamentResults, fetchGlobalRank, refreshMyPosts, loadProfile, user?.id, gamification.loaded])
+      if (!user?.id) {
+        AsyncStorage.getItem(ONBOARDING_FIRST_CATCH_PENDING).then((v) => {
+          const isFirstCatch = v === '1';
+          setSaveCatchPrompt(isFirstCatch);
+          if (isFirstCatch) setShowAuthGate(true);
+        });
+      } else {
+        setSaveCatchPrompt(false);
+      }
+    }, [refreshMyStories, refreshViewedIds, refreshTournamentResults, fetchARRank, refreshMyPosts, loadProfile, user?.id, gamification.loaded])
   );
 
   const [showStoryViewer, setShowStoryViewer] = useState(false);
   const [storyViewerIndex, setStoryViewerIndex] = useState(0);
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [saveCatchPrompt, setSaveCatchPrompt] = useState(false);
 
   // Run on mount and whenever gamification finishes loading so level is always fresh
   useEffect(() => {
@@ -205,21 +318,38 @@ export default function ProfileScreen() {
     }
   };
 
+  const { width: SW } = Dimensions.get('window');
+  const flyCenterX = SW / 2 - 8;
+  const flyCenterY = 180;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ParticleBackground />
+      {/* Flying reward particles — XP icons */}
+      {flyReward ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          {xpAnims.map((anim, i) => (
+            <Animated.Text
+              key={`x-${i}`}
+              style={[
+                styles.flyIcon,
+                {
+                  left: flyCenterX,
+                  top: flyCenterY,
+                  opacity: anim.opacity,
+                  transform: [{ translateX: anim.x }, { translateY: anim.y }],
+                },
+              ]}
+            >
+              {XP_ICON}
+            </Animated.Text>
+          ))}
+        </View>
+      ) : null}
       {/* Top nav */}
       <View style={styles.topBar}>
         <SnaggedWordmark />
         <View style={styles.navRight}>
-          <TouchableOpacity
-            style={styles.coinsChip}
-            onPress={() => router.push('/coin-shop')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.coinsChipEmoji}>💰</Text>
-            <Text style={styles.coinsChipAmount}>{(gamification.coins ?? 0).toLocaleString()}</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={styles.navButton}
             onPress={() => router.push('/(tabs)/friends')}
@@ -239,7 +369,25 @@ export default function ProfileScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: bottomPadding }]}
         showsVerticalScrollIndicator={false}
       >
-        {(profileLoading || !gamification.loaded) ? (
+        {!user ? (
+          <View style={styles.signedOutProfile}>
+            <Text style={styles.signedOutTitle}>
+              {saveCatchPrompt ? 'Sign in to save your catch' : 'Your profile'}
+            </Text>
+            <Text style={styles.signedOutMessage}>
+              {saveCatchPrompt
+                ? 'Your catch is ready. Sign in to save it to your profile and start your logbook.'
+                : 'Sign in to view your stats, edit your profile, and share catches.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.signedOutButton}
+              onPress={() => setShowAuthGate(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.signedOutButtonText}>Sign in</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (profileLoading || !gamification.loaded) ? (
           <View style={styles.skeleton}>
             <ActivityIndicator size="large" color={GOLD} />
             <Text style={styles.skeletonText}>Loading profile...</Text>
@@ -253,20 +401,36 @@ export default function ProfileScreen() {
           avatarUri={user?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id}`}
           username={displayName}
           proVerified={user?.subscriptionPlan === 'pro'}
-          globalRank={globalRank ?? undefined}
+          anglerRating={anglerRating}
+          arRank={arRank ?? undefined}
+          localRank={localRank ?? undefined}
           level={gamification.levelInfo.level}
+          levelTitle={gamification.levelInfo.title}
           xpInLevel={gamification.levelInfo.xpInLevel}
           xpForNext={gamification.levelInfo.xpForNext}
+          prestige={prestige}
+          onLevelPress={() => {
+            router.push({
+              pathname: '/level-roadmap',
+              params: {
+                level: String(gamification.levelInfo.level),
+                prestige: String(prestige),
+                xpInLevel: String(gamification.levelInfo.xpInLevel ?? 0),
+                xpForNext: String(gamification.levelInfo.xpForNext ?? 0),
+              },
+            });
+          }}
           location={location}
+          bio={user?.bio ?? undefined}
           catches={totalCatches}
           species={gamification.caughtSpecies?.size ?? 0}
-          wins={0}
+          wins={tournamentResults.length}
           friends={friends.length}
           onFriendsPress={() => router.push('/(tabs)/friends')}
           onStatPress={(stat) => {
-            if (stat === 'catches' || stat === 'species' || stat === 'wins') {
-              router.push('/(tabs)/logbook');
-            }
+            if (stat === 'catches') router.push('/(tabs)/logbook');
+            else if (stat === 'species') router.push('/(tabs)/passport');
+            else if (stat === 'wins') router.push('/wins');
           }}
           activeStory={activeStory ? { media_url: activeStory.media_url, id: activeStory.id } : null}
           storyAllViewed={allStoriesViewed}
@@ -278,12 +442,43 @@ export default function ProfileScreen() {
           }}
           earnedBadges={earnedBadges}
           displayedBadgeIds={displayedBadgeIds}
-          onEditBadges={() => setShowBadgePicker(true)}
+          displayItems={displayItemsWithLabels}
+          onDisplayItemPress={async (item) => {
+            if (item.type === 'badge' && item.badgeKey && user?.id) {
+              const info = getBadgeDisplayInfo(item.badgeKey);
+              const unlockCatches = await getUnlockCatchesForBadge(user.id, item.badgeKey, true);
+              setSelectedBadgeForModal({
+                name: item.label ?? info.name,
+                unlockHint: info.unlockHint || `Unlocked: ${item.label}`,
+                rarity: item.rarity ?? info.rarity,
+                badgeKey: item.badgeKey,
+                unlockCatches,
+              });
+            } else if (item.type === 'trophy') {
+              const trophy = userTrophies.find((t) => t.id === item.trophyId);
+              if (trophy) setSelectedTrophyForModal(trophy);
+              else setSelectedTrophyViewOnly({ tournamentName: item.tournamentName, place: item.place, imageUrl: item.imageUrl });
+            }
+          }}
+          onEditBadges={() => {
+            refreshDisplayItems();
+            setShowBadgePicker(true);
+          }}
+          onBadgePress={async (badge) => {
+            if (!user?.id) return;
+            const info = getBadgeDisplayInfo(badge.id);
+            const unlockCatches = await getUnlockCatchesForBadge(user.id, badge.id, true);
+            setSelectedBadgeForModal({
+              name: badge.label ?? info.name,
+              unlockHint: info.unlockHint || `Unlocked: ${badge.label}`,
+              rarity: info.rarity,
+              badgeKey: badge.id,
+              unlockCatches,
+            });
+          }}
+          onEditBio={() => router.push('/(tabs)/profile-edit')}
+          onEditAvatar={() => router.push('/(tabs)/profile-edit')}
         />
-
-        {user?.bio ? (
-          <Text style={styles.bio} numberOfLines={2}>{user.bio}</Text>
-        ) : null}
 
         {/* Stories — own profile only */}
         <ProfileStoriesSection
@@ -299,16 +494,6 @@ export default function ProfileScreen() {
           onDeleteGroup={async (storyIds) => {
             await removeStoriesForDay(storyIds);
             setShowStoryViewer(false);
-          }}
-        />
-
-        {/* Badges — directly under stories */}
-        <ProfileBadges
-          results={tournamentResults}
-          username={displayName}
-          avatarUrl={user?.avatarUrl ?? null}
-          onViewLeaderboard={(tournamentId) => {
-            router.push({ pathname: '/(tabs)/tournaments', params: { tournamentId } });
           }}
         />
 
@@ -344,15 +529,38 @@ export default function ProfileScreen() {
           currentLevel={Math.min(gamification.levelInfo.level, MAX_LEVEL)}
         />
 
-        <BadgePickerModal
+        <DisplayBadgesSheet
           visible={showBadgePicker}
+          trophies={userTrophies}
           earnedBadges={earnedBadges}
-          displayedIds={displayedBadgeIds}
-          onSave={(ids) => {
-            setDisplayedBadgeIds(ids);
+          userId={user?.id ?? null}
+          initialSelection={displaySheetInitialSelection}
+          onSave={async (selected) => {
+            await saveProfileDisplayItems(selected);
+            refreshDisplayItems();
             setShowBadgePicker(false);
           }}
           onClose={() => setShowBadgePicker(false)}
+        />
+        <BadgeDetailModal
+          visible={!!selectedBadgeForModal}
+          onClose={() => setSelectedBadgeForModal(null)}
+          name={selectedBadgeForModal?.name ?? ''}
+          rarity={selectedBadgeForModal?.rarity ?? 'COMMON'}
+          unlockHint={selectedBadgeForModal?.unlockHint ?? ''}
+          unlocked={true}
+          unlockCatches={selectedBadgeForModal?.unlockCatches ?? []}
+          badgeKey={selectedBadgeForModal?.badgeKey}
+        />
+        <TrophyDetailModal
+          visible={!!selectedTrophyForModal}
+          trophy={selectedTrophyForModal}
+          onClose={() => setSelectedTrophyForModal(null)}
+        />
+        <TrophyViewOnlyModal
+          visible={!!selectedTrophyViewOnly}
+          payload={selectedTrophyViewOnly}
+          onClose={() => setSelectedTrophyViewOnly(null)}
         />
 
         <StoryComposer
@@ -405,6 +613,20 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={styles.sectionCard}
+          onPress={() => router.push('/(tabs)/badges')}
+        >
+          <Ionicons name="trophy" size={24} color={GOLD} />
+          <View style={styles.badgesContent}>
+            <Text style={styles.badgesTitle}>Badge Collection</Text>
+            <Text style={styles.badgesSubtext}>
+              Species mastery badges
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={22} color={colors.lightSubtext} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.editButton}
           onPress={() => router.push('/(tabs)/profile-edit')}
         >
@@ -429,6 +651,12 @@ export default function ProfileScreen() {
           </>
         )}
       </ScrollView>
+
+      <AuthGateModal
+        visible={showAuthGate}
+        action={saveCatchPrompt ? 'onboarding_first_catch' : 'view_profile'}
+        onClose={() => setShowAuthGate(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -465,35 +693,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
   },
-  coinsChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255,184,0,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,184,0,0.35)',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 4,
+  flyRewardBadge: {
+    position: 'absolute',
+    right: -4,
+    top: -8,
+    backgroundColor: '#FFB800',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
-  coinsChipEmoji: {
-    fontSize: 14,
+  flyRewardText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0d1624',
   },
-  coinsChipAmount: {
+  flyIcon: {
+    position: 'absolute',
     fontSize: 14,
-    fontWeight: '900',
-    color: '#FFB800',
+    width: 16,
+    textAlign: 'center',
   },
   content: {
     paddingHorizontal: 12,
-  },
-  bio: {
-    fontSize: 14,
-    color: colors.lightText,
-    marginTop: 12,
-    marginBottom: 12,
-    lineHeight: 20,
   },
   xpSection: {
     marginBottom: 10,
@@ -653,6 +874,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: ACCENT_BLUE,
+  },
+  signedOutProfile: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 48,
+    alignItems: 'center',
+  },
+  signedOutTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.lightText,
+    marginBottom: 12,
+  },
+  signedOutMessage: {
+    fontSize: 16,
+    color: colors.lightSubtext,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  signedOutButton: {
+    backgroundColor: colors.brightBlue,
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+  },
+  signedOutButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   skeleton: {
     paddingVertical: 40,

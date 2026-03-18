@@ -1,4 +1,7 @@
--- Unlock Pro features for all users (no upgrade/paywall)
+-- DEPRECATED: Do not run. Effects reverted by supabase/migrations/20260230110000_restore_pro_gating.sql
+-- Pro gating is now based on profiles.subscription_plan and pro_expires_at.
+--
+-- Original: Unlock Pro features for all users (no upgrade/paywall)
 -- Treats all users as Pro: 50 uploads/month, no free-tier limits
 
 CREATE OR REPLACE FUNCTION check_upload_limit(p_user_id UUID)

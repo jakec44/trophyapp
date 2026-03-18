@@ -11,4 +11,7 @@ export const mediaPath = {
     `${userId}/tournaments/${tournamentId}/${id}.jpg`,
   post:   (userId: string, postId: string) =>
     `${userId}/posts/${postId}.jpg`,
+  /** Multi-media post: userId/posts/postId_0.jpg, postId_1.mp4, ... */
+  postIndex: (userId: string, postId: string, index: number, ext: 'jpg' | 'mp4') =>
+    `${userId}/posts/${postId}_${index}.${ext}`,
 };

@@ -26,6 +26,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { getStoryLikeCount, getStoryLikedByMe, toggleStoryLike } from '@/src/lib/supabase';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import { resolveMediaUrl } from '@/src/lib/mediaUrl';
+import { devLog } from '@/src/lib/env';
 
 const STORY_DURATION_MS = 5000;
 
@@ -95,7 +96,7 @@ export function StoryViewerModal({
     if (url && !isGarbageUrl(url)) {
       setDisplayUrl(url);
     } else {
-      if (__DEV__) console.log('[MEDIA] INVALID STORY PATH', { storyId: item.id, media_path: path, media_url: urlRaw });
+      devLog('[MEDIA] INVALID STORY PATH', { storyId: item.id, media_path: path, media_url: urlRaw });
       setLoadError(true);
     }
     setLoading(false);

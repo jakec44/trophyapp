@@ -73,6 +73,9 @@ const PATHS: Record<string, string> = {
   'yellowtail-snapper':
     'M 7,35 C 9,21 30,9 58,11 C 74,9 86,18 92,29 L 114,15 L 102,35 L 114,55 L 92,41 C 86,52 74,61 58,59 C 30,61 9,49 7,35 Z',
 
+  'vermillion-snapper':
+    'M 8,35 C 10,19 32,7 60,9 C 76,7 88,16 93,27 L 115,14 L 103,35 L 115,56 L 93,43 C 88,54 76,63 60,61 C 32,63 10,51 8,35 Z',
+
   amberjack:
     'M 7,35 C 9,21 28,9 58,11 C 75,9 87,17 92,27 L 114,14 L 102,35 L 114,56 L 92,43 C 87,53 75,61 58,59 C 28,61 9,49 7,35 Z',
 
@@ -150,6 +153,9 @@ const PATHS: Record<string, string> = {
   bluegill:
     'M 14,35 C 14,14 34,2 58,2 C 82,2 98,14 104,28 L 116,22 L 108,35 L 116,48 L 104,42 C 98,56 82,68 58,68 C 34,68 14,56 14,35 Z',
 
+  pumpkinseed:
+    'M 14,35 C 14,14 34,2 58,2 C 82,2 98,14 104,28 L 116,22 L 108,35 L 116,48 L 104,42 C 98,56 82,68 58,68 C 34,68 14,56 14,35 Z',
+
   'channel-catfish':
     'M 6,35 C 6,24 18,15 40,16 C 58,14 76,20 84,28 L 108,15 L 97,35 L 108,55 L 84,42 C 76,50 58,56 40,54 C 18,53 6,46 6,35 Z',
 
@@ -174,10 +180,16 @@ const PATHS: Record<string, string> = {
   'brook-trout':
     'M 9,35 C 11,22 33,10 62,12 C 78,10 89,19 94,29 L 114,15 L 102,35 L 114,55 L 94,41 C 89,51 78,60 62,58 C 33,60 11,48 9,35 Z',
 
+  'tiger-trout':
+    'M 8,35 C 10,22 32,10 62,12 C 78,10 89,19 94,29 L 115,15 L 103,35 L 115,55 L 94,41 C 89,51 78,60 62,58 C 32,60 10,48 8,35 Z',
+
   muskie:
     'M 2,35 C 3,28 12,22 35,22 C 55,20 80,25 92,30 L 116,18 L 104,35 L 116,52 L 92,40 C 80,45 55,50 35,48 C 12,48 3,42 2,35 Z',
 
   carp:
+    'M 12,38 C 12,18 36,5 68,7 C 84,4 97,14 100,27 L 118,21 L 110,35 L 118,49 L 100,43 C 97,56 84,66 68,64 C 36,67 12,52 12,38 Z',
+
+  'grass-carp':
     'M 12,38 C 12,18 36,5 68,7 C 84,4 97,14 100,27 L 118,21 L 110,35 L 118,49 L 100,43 C 97,56 84,66 68,64 C 36,67 12,52 12,38 Z',
 
   'white-bass':
@@ -198,6 +210,7 @@ const PATHS: Record<string, string> = {
   warmouth: 'M 14,35 C 14,14 34,2 58,2 C 82,2 98,14 104,28 L 116,22 L 108,35 L 116,48 L 104,42 C 98,56 82,68 58,68 C 34,68 14,56 14,35 Z',
   'peacock-bass': 'M 7,35 C 7,20 22,8 48,10 C 68,8 84,16 90,26 L 112,14 L 100,35 L 112,56 L 90,44 C 84,54 68,62 48,60 C 22,61 7,50 7,35 Z',
   snakehead: 'M 6,35 C 6,24 20,14 45,14 C 68,12 88,20 94,30 L 112,18 L 101,35 L 112,52 L 94,40 C 88,52 68,60 45,56 C 20,56 6,46 6,35 Z',
+  'clown-knifefish': 'M 6,35 C 6,24 20,14 45,14 C 68,12 88,20 94,30 L 112,18 L 101,35 L 112,52 L 94,40 C 88,52 68,60 45,56 C 20,56 6,46 6,35 Z',
   'white-sturgeon': 'M 8,35 C 8,28 16,22 36,22 C 56,20 80,24 92,28 L 112,20 L 102,35 L 112,50 L 92,42 C 80,48 56,52 36,48 C 16,48 8,42 8,35 Z',
   'atlantic-sturgeon': 'M 6,35 C 6,28 14,22 34,22 C 54,20 78,24 90,28 L 110,20 L 100,35 L 110,50 L 90,42 C 78,48 54,52 34,48 C 14,48 6,42 6,35 Z',
   steelhead: 'M 8,35 C 10,21 32,9 62,11 C 78,9 89,18 94,28 L 115,14 L 103,35 L 115,56 L 94,42 C 89,52 78,61 62,59 C 32,61 10,49 8,35 Z',
@@ -229,6 +242,7 @@ const EYE_POS: Record<string, [number, number]> = {
   'red-snapper': [22, 27],
   'mangrove-snapper': [22, 28],
   'yellowtail-snapper': [20, 28],
+  'vermillion-snapper': [22, 27],
   amberjack: [20, 28],
   grouper: [22, 26],
   'striped-bass': [20, 28],
@@ -257,6 +271,7 @@ const EYE_POS: Record<string, [number, number]> = {
   'crappie-black': [28, 26],
   'crappie-white': [28, 26],
   bluegill: [28, 25],
+  pumpkinseed: [28, 25],
   'channel-catfish': [18, 30],
   'flathead-catfish': [14, 32],
   'blue-catfish': [18, 30],
@@ -265,8 +280,10 @@ const EYE_POS: Record<string, [number, number]> = {
   'rainbow-trout': [22, 29],
   'brown-trout': [22, 30],
   'brook-trout': [22, 30],
+  'tiger-trout': [22, 29],
   muskie: [12, 33],
   carp: [24, 33],
+  'grass-carp': [24, 33],
   'white-bass': [22, 29],
   'yellow-perch': [22, 29],
   'drum-freshwater': [26, 30],
@@ -279,6 +296,7 @@ const EYE_POS: Record<string, [number, number]> = {
   warmouth: [28, 25],
   'peacock-bass': [22, 28],
   snakehead: [22, 30],
+  'clown-knifefish': [22, 30],
   'white-sturgeon': [20, 32],
   'atlantic-sturgeon': [18, 32],
   steelhead: [22, 29],

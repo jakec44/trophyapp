@@ -30,8 +30,10 @@ function useTimeRemaining(endsAt?: string): string {
       const d = Math.floor(diff / 86400000);
       const h = Math.floor((diff % 86400000) / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
-      if (d > 0) setStr(`${d}d ${h}h`);
-      else if (h > 0) setStr(`${h}h ${m}m`);
+      if (d > 0) {
+        const dayStr = d === 1 ? '1 day' : `${d} days`;
+        setStr(h > 0 ? `${dayStr} ${h} hr` : dayStr);
+      } else if (h > 0) setStr(`${h}h ${m}m`);
       else setStr(`${m}m`);
     };
     update();

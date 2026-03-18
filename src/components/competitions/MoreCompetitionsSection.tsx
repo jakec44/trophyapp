@@ -12,6 +12,7 @@ import { CARD_RADIUS } from '@/src/constants/styles';
 import type { Tournament } from '@/src/types/tournaments';
 import { LeaderboardRow } from '@/src/components/home/LeaderboardRow';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 const ACCENT_BLUE = colors.accentBlue;
 
 interface MoreCompetitionsSectionProps {
@@ -32,7 +33,7 @@ export function MoreCompetitionsSection({
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>More Biggest Fish Tournaments</Text>
+      <Text style={styles.sectionTitle}>Biggest Fish Overall</Text>
       {competitions.map((comp) => (
         <CompetitionPreviewCard
           key={comp.id}
@@ -59,10 +60,11 @@ function CompetitionPreviewCard({
   voteLoading,
   onPress,
 }: CompetitionPreviewCardProps) {
+  const winCheck = useTournamentWinCheckContext();
   const isGeneral = tournament.id === 'biggest-fish-this-week';
   const displayTitle = isGeneral
-    ? 'Biggest Fish'
-    : `Biggest Fish · ${tournament.title}`;
+    ? 'Biggest Fish Overall'
+    : `Biggest Fish Overall · ${tournament.title}`;
   const top3 = tournament.topEntries.slice(0, 3);
 
   return (
@@ -73,7 +75,11 @@ function CompetitionPreviewCard({
         </Text>
         <View style={styles.ribbonRow}>
           {tournament.endsAt && (
-            <TournamentCountdown endsAt={tournament.endsAt} compact />
+            <TournamentCountdown
+              endsAt={tournament.endsAt}
+              compact
+              onEnded={winCheck?.triggerCheck}
+            />
           )}
         </View>
       </View>

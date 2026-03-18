@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import {
   View,
@@ -12,15 +12,17 @@ import {
   Alert,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Linking } from 'react-native';
 import { colors } from '@/utils/colors';
 import { useFriendsContext } from '@/src/context/FriendsContext';
 import { UserLink } from '@/src/components/profile/UserLink';
 import { useBottomSafePadding } from '@/src/components/ScreenContainer';
+import { useAuthContext } from '@/src/context/AuthContext';
+import { sendDirectMessage, getDirectConversations, buildSharedPostMessage } from '@/src/lib/supabase';
 import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -37,80 +39,169 @@ function generateInviteLink(token: string): string {
 function FriendRow({
   item,
   onInvite,
+  rowStyle,
+  onSendPost,
 }: {
   item: import('@/src/context/FriendsContext').FriendPreview;
   onInvite: (name: string) => void;
+  rowStyle?: { paddingRight?: number };
+  /** When set (e.g. sharing a post from feed), Send Message sends that post then opens chat. */
+  onSendPost?: (friendUserId: string, displayName: string, avatar?: string) => Promise<void>;
 }) {
   const router = useRouter();
   const isOnApp = item.isOnApp !== false && item.userId;
+  const [sending, setSending] = useState(false);
 
   const handleRowPress = () => {
     const uid = item.userId ?? item.id;
     router.push(`/friends/${uid}`);
   };
 
-  const handleSend = (e: any) => {
+  const handleSend = async (e: any) => {
     e?.stopPropagation?.();
-    if (isOnApp) {
-      const uid = item.userId ?? item.id;
-      const dname = encodeURIComponent(item.displayName);
-      router.push(`/chat/${uid}?displayName=${dname}`);
-    } else {
+    if (!isOnApp) {
       onInvite(item.displayName);
+      return;
+    }
+    const uid = item.userId ?? item.id;
+    const dname = encodeURIComponent(item.displayName);
+    const av = item.avatar ? encodeURIComponent(item.avatar) : '';
+    if (onSendPost) {
+      setSending(true);
+      try {
+        await onSendPost(uid, item.displayName, item.avatar);
+        router.push(`/chat/${uid}?displayName=${dname}${av ? `&avatarUrl=${av}` : ''}`);
+      } catch (err) {
+        Alert.alert('Could not send', (err as Error)?.message ?? 'Please try again.');
+      } finally {
+        setSending(false);
+      }
+    } else {
+      router.push(`/chat/${uid}?displayName=${dname}${av ? `&avatarUrl=${av}` : ''}`);
     }
   };
 
-  return (
-    <TouchableOpacity
-      style={styles.row}
-      activeOpacity={0.7}
-      onPress={handleRowPress}
-    >
-      {isOnApp ? (
-        <UserLink
-          userId={item.userId ?? item.id}
-          username={item.displayName}
-          avatarUrl={item.avatar}
-          variant="row"
-          avatarSize={44}
-        />
+  const leftContent = isOnApp ? (
+    <UserLink
+      userId={item.userId ?? item.id}
+      username={item.displayName}
+      avatarUrl={item.avatar}
+      variant="row"
+      avatarSize={44}
+    />
+  ) : (
+    <>
+      {isValidImageUri(item.avatar) ? (
+        <Image source={{ uri: item.avatar }} style={styles.avatar} />
       ) : (
-        <>
-          {isValidImageUri(item.avatar) ? (
-            <Image source={{ uri: item.avatar }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: colors.lightBorder, justifyContent: 'center', alignItems: 'center' }]}>
-              <Text style={{ fontSize: 12, color: colors.lightSubtext }}>{(item.displayName || '?').slice(0, 2).toUpperCase()}</Text>
-            </View>
-          )}
-          <View style={styles.nameWrap}>
-            <Text style={styles.displayName} numberOfLines={1}>
-              {item.displayName}
-            </Text>
-            {item.proVerified && (
-              <Ionicons name="checkmark-circle" size={14} color={ACCENT_BLUE} style={styles.verified} />
-            )}
-          </View>
-        </>
+        <View style={[styles.avatar, { backgroundColor: colors.lightBorder, justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ fontSize: 12, color: colors.lightSubtext }}>{(item.displayName || '?').slice(0, 2).toUpperCase()}</Text>
+        </View>
       )}
+      <View style={styles.nameWrap}>
+        <Text style={styles.displayName} numberOfLines={1}>
+          {item.displayName}
+        </Text>
+        {item.proVerified && (
+          <Ionicons name="checkmark-circle" size={14} color={ACCENT_BLUE} style={styles.verified} />
+        )}
+      </View>
+    </>
+  );
+
+  return (
+    <View style={[styles.row, rowStyle]}>
+      <TouchableOpacity
+        style={styles.rowLeftTouchable}
+        activeOpacity={0.7}
+        onPress={handleRowPress}
+      >
+        {leftContent}
+      </TouchableOpacity>
       {isOnApp ? (
-        <TouchableOpacity style={styles.sendBtn} onPress={handleSend}>
-          <Text style={styles.sendBtnText}>Send Message</Text>
+        <TouchableOpacity style={styles.sendBtn} onPress={handleSend} disabled={sending}>
+          <Text style={styles.sendBtnText}>{sending ? 'Sending…' : 'Send Message'}</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity style={styles.inviteBtn} onPress={handleSend}>
           <Text style={styles.inviteBtnText}>Invite</Text>
         </TouchableOpacity>
       )}
-    </TouchableOpacity>
+    </View>
   );
 }
 
 export default function FriendsScreen() {
   const router = useRouter();
-  const { friends } = useFriendsContext();
+  const { user } = useAuthContext();
+  const { friends: friendsRaw } = useFriendsContext();
   const bottomPadding = useBottomSafePadding();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<'friends' | 'requests'>('friends');
+  const headerPaddingRight = Math.max(16, insets.right);
+  const rowPaddingRight = Math.max(16, insets.right);
+
+  const params = useLocalSearchParams<{
+    sharePostId?: string;
+    shareSpecies?: string;
+    shareWeight?: string;
+    shareCaption?: string;
+    sharePhotoUrl?: string;
+    shareIsVideo?: string;
+  }>();
+  const sharePostId = params.sharePostId;
+  const shareSpecies = params.shareSpecies ?? '';
+  const shareWeight = params.shareWeight ?? '';
+  const shareCaption = params.shareCaption ?? '';
+  const sharePhotoUrl = params.sharePhotoUrl ?? '';
+  const shareIsVideo = params.shareIsVideo === '1';
+  const shareMessageBody =
+    sharePostId && shareSpecies
+      ? `Shared a catch: ${shareSpecies}${shareWeight ? `, ${shareWeight} lbs` : ''}${shareCaption ? ` — ${shareCaption}` : ''}`
+      : '';
+
+  const [conversationOrder, setConversationOrder] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!user?.id) return;
+    getDirectConversations(user.id).then((dms) => {
+      const order = new Map<string, string>();
+      dms.forEach((dm) => order.set(dm.otherUserId, dm.lastMessageAt));
+      setConversationOrder(order);
+    });
+  }, [user?.id]);
+
+  const friends = useMemo(() => {
+    if (conversationOrder.size === 0) return friendsRaw;
+    return [...friendsRaw].sort((a, b) => {
+      const aUid = a.userId ?? a.id;
+      const bUid = b.userId ?? b.id;
+      const aAt = conversationOrder.get(aUid);
+      const bAt = conversationOrder.get(bUid);
+      if (aAt && bAt) return new Date(bAt).getTime() - new Date(aAt).getTime();
+      if (aAt) return -1;
+      if (bAt) return 1;
+      return 0;
+    });
+  }, [friendsRaw, conversationOrder]);
+
+  const handleSendPostToFriend = useCallback(
+    async (friendUserId: string, _displayName: string, _avatar?: string) => {
+      if (!user?.id) return;
+      const body = sharePostId
+        ? buildSharedPostMessage({
+            postId: sharePostId,
+            species: shareSpecies,
+            weight: shareWeight,
+            caption: shareCaption,
+            photoUrl: sharePhotoUrl,
+            isVideo: shareIsVideo,
+          })
+        : shareMessageBody;
+      if (!body) return;
+      await sendDirectMessage(user.id, friendUserId, body);
+    },
+    [user?.id, sharePostId, shareSpecies, shareWeight, shareCaption, sharePhotoUrl, shareIsVideo, shareMessageBody]
+  );
 
   const inviteMessage = (name?: string) => {
     const token = `inv-${Date.now()}`;
@@ -169,12 +260,16 @@ export default function FriendsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ParticleBackground />
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { paddingRight: headerPaddingRight }]}>
         <View style={styles.header}>
           <SnaggedWordmark />
-          <Text style={styles.title}>Friends</Text>
-          <Text style={styles.subtitle}>
-            {activeTab === 'friends' ? `${friends.length} anglers` : `${pendingRequests.length} requests`}
+          <Text style={styles.title} numberOfLines={1}>Friends</Text>
+          <Text style={styles.subtitle} numberOfLines={1}>
+            {sharePostId
+              ? 'Send this catch to a friend'
+              : activeTab === 'friends'
+                ? `${friends.length} anglers`
+                : `${pendingRequests.length} requests`}
           </Text>
         </View>
         <TouchableOpacity style={styles.inviteFriendBtn} onPress={handleInviteFriend}>
@@ -236,6 +331,8 @@ export default function FriendsScreen() {
                 key={item.id}
                 item={item}
                 onInvite={handleInvite}
+                rowStyle={{ paddingRight: rowPaddingRight }}
+                onSendPost={sharePostId ? handleSendPostToFriend : undefined}
               />
             ))
           )
@@ -246,6 +343,7 @@ export default function FriendsScreen() {
               request={req}
               onAccept={() => acceptRequest(req.id)}
               onDecline={() => declineRequest(req.id)}
+              rowStyle={{ paddingRight: rowPaddingRight }}
             />
           ))
         )}
@@ -263,15 +361,17 @@ function RequestRow({
   request,
   onAccept,
   onDecline,
+  rowStyle,
 }: {
   request: import('@/src/context/FriendsContext').FriendRequest;
   onAccept: () => void;
   onDecline: () => void;
+  rowStyle?: { paddingRight?: number };
 }) {
   const name = request.fromDisplayName ?? request.toPhoneNumber ?? 'Unknown';
   const initials = name.slice(0, 2).toUpperCase();
   return (
-    <View style={styles.requestRow}>
+    <View style={[styles.requestRow, rowStyle]}>
       <View style={styles.requestAvatar}>
         {isValidImageUri(request.fromAvatarUrl) ? (
           <Image source={{ uri: request.fromAvatarUrl }} style={styles.requestAvatarImg} />
@@ -336,6 +436,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 10,
+    flexShrink: 0,
+    marginLeft: 10,
   },
   inviteFriendBtnText: {
     fontSize: 14,
@@ -437,12 +539,14 @@ const styles = StyleSheet.create({
   requestActions: {
     flexDirection: 'row',
     gap: 8,
+    flexShrink: 0,
   },
   acceptBtn: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: colors.accentBlue,
+    flexShrink: 0,
   },
   acceptBtnText: {
     fontSize: 14,
@@ -454,6 +558,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: colors.lightBorder,
+    flexShrink: 0,
   },
   declineBtnText: {
     fontSize: 14,
@@ -483,6 +588,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.lightBorder,
     backgroundColor: colors.lightCard,
   },
+  rowLeftTouchable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
   avatar: {
     width: 44,
     height: 44,
@@ -510,6 +621,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: colors.lightBorder,
+    flexShrink: 0,
+    minWidth: 110,
   },
   sendBtnText: {
     fontSize: 14,
@@ -521,6 +634,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: ACCENT_BLUE,
+    flexShrink: 0,
   },
   inviteBtnText: {
     fontSize: 14,

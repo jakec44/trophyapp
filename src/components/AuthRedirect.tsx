@@ -6,8 +6,8 @@ import { useAuthContext } from '@/src/context/AuthContext';
 
 /**
  * Redirects based on auth state:
- * - !isSignedIn -> (auth)/sign-in
- * - isSignedIn -> (tabs)
+ * - First-time walkthrough: no auto-redirect; unauthenticated users can use (tabs) until "Continue Fishing" after first catch.
+ * - isSignedIn && in (auth) -> go to (tabs) (no separate onboarding screens).
  */
 export function AuthRedirect() {
   const { isSignedIn, isLoading } = useAuthContext();
@@ -19,9 +19,7 @@ export function AuthRedirect() {
 
     const inAuthGroup = segments[0] === '(auth)';
 
-    if (!isSignedIn && !inAuthGroup) {
-      router.replace('/(auth)/sign-in');
-    } else if (isSignedIn && inAuthGroup) {
+    if (isSignedIn && inAuthGroup) {
       router.replace('/(tabs)');
     }
   }, [isSignedIn, isLoading, segments, router]);

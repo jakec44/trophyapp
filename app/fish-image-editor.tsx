@@ -69,6 +69,7 @@ export default function FishImageEditorScreen() {
       </View>
 
       <View style={styles.content}>
+        <Text style={styles.aiComingSoon}>AI identifier coming soon</Text>
         <View style={styles.imageWrap}>
           {isValidImageUri(originalUri) ? (
             <Image
@@ -93,6 +94,7 @@ export default function FishImageEditorScreen() {
           <Text style={styles.continueBtnText}>Continue to Log</Text>
           <Feather name="arrow-right" size={20} color="#FFF" />
         </Pressable>
+        <Text style={styles.aiTrackerComingSoon}>AI tracker coming soon</Text>
       </View>
     </SafeAreaView>
   );
@@ -161,6 +163,19 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  aiComingSoon: {
+    fontSize: 13,
+    color: colors.lightSubtext,
+    fontStyle: 'italic',
+    marginBottom: 16,
+  },
+  aiTrackerComingSoon: {
+    fontSize: 13,
+    color: colors.lightSubtext,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 20,
   },
   errorText: {
     fontSize: 16,

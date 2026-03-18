@@ -30,13 +30,16 @@ export function GlobalLocalToggle({ value, onChange, dark = false }: GlobalLocal
             style={StyleSheet.absoluteFill}
           />
         )}
-        <Text style={[
-          styles.text,
-          value === 'global' && styles.textActive,
-          dark && styles.textDark,
-          dark && value === 'global' && styles.textActiveDark,
-          dark && value !== 'global' && styles.textFaintDark,
-        ]}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.text,
+            value === 'global' && styles.textActive,
+            dark && styles.textDark,
+            dark && value === 'global' && styles.textActiveDark,
+            dark && value !== 'global' && styles.textFaintDark,
+          ]}
+        >
           GLOBAL
         </Text>
       </TouchableOpacity>
@@ -53,13 +56,16 @@ export function GlobalLocalToggle({ value, onChange, dark = false }: GlobalLocal
             style={StyleSheet.absoluteFill}
           />
         )}
-        <Text style={[
-          styles.text,
-          value === 'local' && styles.textActive,
-          dark && styles.textDark,
-          dark && value === 'local' && styles.textActiveDark,
-          dark && value !== 'local' && styles.textFaintDark,
-        ]}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.text,
+            value === 'local' && styles.textActive,
+            dark && styles.textDark,
+            dark && value === 'local' && styles.textActiveDark,
+            dark && value !== 'local' && styles.textFaintDark,
+          ]}
+        >
           LOCAL
         </Text>
       </TouchableOpacity>

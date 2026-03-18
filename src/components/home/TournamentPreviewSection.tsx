@@ -57,7 +57,7 @@ export function TournamentPreviewSection({
             style={[styles.scopeTab, scope === 'global' && styles.scopeTabActive]}
             onPress={() => { setScope('global'); setActiveIndex(0); }}
           >
-            <Text style={[styles.scopeTabText, scope === 'global' && styles.scopeTabTextActive]}>
+            <Text numberOfLines={1} style={[styles.scopeTabText, scope === 'global' && styles.scopeTabTextActive]}>
               Global
             </Text>
           </TouchableOpacity>
@@ -65,7 +65,7 @@ export function TournamentPreviewSection({
             style={[styles.scopeTab, scope === 'local' && styles.scopeTabActive]}
             onPress={() => { setScope('local'); setActiveIndex(0); }}
           >
-            <Text style={[styles.scopeTabText, scope === 'local' && styles.scopeTabTextActive]}>
+            <Text numberOfLines={1} style={[styles.scopeTabText, scope === 'local' && styles.scopeTabTextActive]}>
               Local
             </Text>
           </TouchableOpacity>

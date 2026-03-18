@@ -15,7 +15,8 @@ import { useRouter } from 'expo-router';
 import { colors } from '@/utils/colors';
 import Feather from '@expo/vector-icons/Feather';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { signInWithApple, signUp, signIn } from '@/src/lib/supabase';
+import { signInWithApple, signUp, signIn, isSupabaseConfigured } from '@/src/lib/supabase';
+import { isDev } from '@/src/lib/env';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -122,6 +123,11 @@ export default function LoginScreen() {
         <View style={styles.header}>
           <Text style={styles.title}>Snagged</Text>
           <Text style={styles.subtitle}>The App for Anglers</Text>
+          {isDev && (
+            <Text style={styles.devBanner}>
+              [DEV build from Metro] {isSupabaseConfigured ? 'Supabase: connected' : 'Supabase: not configured — use npm run start:clean'}
+            </Text>
+          )}
         </View>
 
         {/* Easy Sign-In: Apple (iOS) */}
@@ -229,6 +235,11 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
+    color: colors.lightSubtext,
+  },
+  devBanner: {
+    marginTop: 12,
+    fontSize: 12,
     color: colors.lightSubtext,
   },
   socialSection: {

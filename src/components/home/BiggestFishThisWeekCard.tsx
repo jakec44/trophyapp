@@ -5,6 +5,7 @@ import { colors } from '@/utils/colors';
 import type { FishEntry } from '@/src/types/tournaments';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
 import { LeaderboardRow } from './LeaderboardRow';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 
 interface BiggestFishThisWeekCardProps {
   title: string;
@@ -26,6 +27,7 @@ export function BiggestFishThisWeekCard({
   voteLoading,
 }: BiggestFishThisWeekCardProps) {
   const router = useRouter();
+  const winCheck = useTournamentWinCheckContext();
 
   return (
     <View style={styles.card}>
@@ -38,7 +40,11 @@ export function BiggestFishThisWeekCard({
 
         <View style={styles.countdownRow}>
           <Ionicons name="time-outline" size={16} color={colors.lightSubtext} />
-          <TournamentCountdown endsAt={endsAt} compact />
+          <TournamentCountdown
+            endsAt={endsAt}
+            compact
+            onEnded={winCheck?.triggerCheck}
+          />
           <Text style={styles.entrants}>{entrantsCount} competing</Text>
         </View>
       </TouchableOpacity>

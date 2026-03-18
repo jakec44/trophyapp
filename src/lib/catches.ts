@@ -5,8 +5,18 @@
 
 import { supabase, getPublicUrl, updateCatch, uploadImageAsJpegToStorage } from '@/src/lib/supabase';
 import { mediaPath } from './mediaPaths';
+import { devLog } from './env';
 
 const BUCKET = 'media';
+
+const LOG_CATCH_TIMEOUT_MS = 55000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(msg)), ms)),
+  ]);
+}
 
 export interface CreateCatchInput {
   user_id: string;
@@ -57,8 +67,13 @@ export interface LogCatchResult {
  * b) Upload photo to media/{userId}/catches/{catchId}.jpg
  * c) Update row (photo_path, photo_url, status=complete)
  * d) On upload failure: update status=failed, throw for retry
+ * Bounded by timeout so slow RPC/upload don't hang (e.g. TestFlight).
  */
 export async function logCatch(input: LogCatchInput): Promise<LogCatchResult> {
+  return withTimeout(doLogCatch(input), LOG_CATCH_TIMEOUT_MS, 'Log timed out. Check your connection and try again.');
+}
+
+async function doLogCatch(input: LogCatchInput): Promise<LogCatchResult> {
   const { user_id, species, weight_lb, length_in, notes, location, taken_at, photoUri } = input;
 
   const { data: rpcData, error: insertErr } = await supabase.rpc('create_log_entry', {
@@ -76,14 +91,14 @@ export async function logCatch(input: LogCatchInput): Promise<LogCatchResult> {
   if (!created?.id) throw new Error('Insert returned no row');
 
   const catchId = created.id;
-  console.log('[LogCatch] session userId:', user_id, 'inserted catchId:', catchId, 'bucket:', BUCKET);
+  devLog('[LogCatch] session userId:', user_id, 'inserted catchId:', catchId, 'bucket:', BUCKET);
 
   if (!photoUri) {
     return { id: catchId, photo_url: null, photo_path: null, status: 'complete' };
   }
 
   const path = mediaPath.log(user_id, catchId);
-  console.log('[MEDIA] catch upload start', { bucket: BUCKET, path });
+  devLog('[MEDIA] catch upload start', { bucket: BUCKET, path });
 
   try {
     await uploadImageAsJpegToStorage(BUCKET, path, photoUri);
@@ -92,10 +107,9 @@ export async function logCatch(input: LogCatchInput): Promise<LogCatchResult> {
       try {
         await updateCatch(catchId, {
           photo_path: path,
-          photo_url: photoUrl,
           upload_status: 'complete',
         });
-        console.log('[MEDIA] catch upload complete', { bucket: BUCKET, path, url: photoUrl });
+        devLog('[MEDIA] catch upload complete', { bucket: BUCKET, path, url: photoUrl });
         return { id: catchId, photo_url: photoUrl, photo_path: path, status: 'complete' };
       } catch (updateErr) {
         if (attempt === 2) throw updateErr;
@@ -119,10 +133,10 @@ export async function retryCatchPhotoUpload(
   photoUri: string
 ): Promise<LogCatchResult> {
   const path = mediaPath.log(userId, catchId);
-  console.log('[MEDIA] catch retry start', { bucket: BUCKET, path });
+  devLog('[MEDIA] catch retry start', { bucket: BUCKET, path });
   await uploadImageAsJpegToStorage(BUCKET, path, photoUri);
   const photoUrl = getPublicUrl(BUCKET, path);
   await updateCatch(catchId, { photo_path: path, upload_status: 'complete' });
-  console.log('[MEDIA] catch retry complete', { bucket: BUCKET, path, url: photoUrl });
+  devLog('[MEDIA] catch retry complete', { bucket: BUCKET, path, url: photoUrl });
   return { id: catchId, photo_url: photoUrl, photo_path: path, status: 'complete' };
 }

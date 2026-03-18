@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -28,9 +29,11 @@ import { toFriendlyMessage } from '@/src/lib/errorMessages';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import Feather from '@expo/vector-icons/Feather';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
+import { devLog } from '@/src/lib/env';
 
 export default function ProfileEditScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, refreshProfile } = useAuthContext();
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
@@ -42,7 +45,10 @@ export default function ProfileEditScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      router.replace('/(tabs)/profile');
+      return;
+    }
     (async () => {
       const profile = await getUserProfile(user.id);
       if (profile) {
@@ -78,10 +84,10 @@ export default function ProfileEditScreen() {
     setSaving(true);
     try {
       const path = mediaPath.avatar(user.id);
-      console.log('[MEDIA] avatar upload start', { bucket: 'media', path });
+      devLog('[MEDIA] avatar upload start', { bucket: 'media', path });
       await uploadImageAsJpegToStorage('media', path, uri);
       await updateUserProfile(user.id, { avatar_url: path });
-      console.log('[MEDIA] avatar upload complete', { bucket: 'media', path });
+      devLog('[MEDIA] avatar upload complete', { bucket: 'media', path });
       await refreshProfile();
     } catch (e) {
       console.error('[MEDIA] avatar upload failed:', e);
@@ -109,10 +115,10 @@ export default function ProfileEditScreen() {
     setSaving(true);
     try {
       const path = mediaPath.banner(user.id);
-      console.log('[MEDIA] banner upload start', { bucket: 'media', path });
+      devLog('[MEDIA] banner upload start', { bucket: 'media', path });
       await uploadImageAsJpegToStorage('media', path, uri);
       await updateUserProfile(user.id, { banner_url: path });
-      console.log('[MEDIA] banner upload complete', { bucket: 'media', path });
+      devLog('[MEDIA] banner upload complete', { bucket: 'media', path });
       await refreshProfile();
     } catch (e) {
       console.error('[MEDIA] banner upload failed:', e);
@@ -146,12 +152,15 @@ export default function ProfileEditScreen() {
     setSaving(true);
     try {
       await updateUserProfile(user.id, {
+        name: nameVal,
         display_name: nameVal,
         username: u,
         bio: bio.trim() || null,
         location: location.trim() || null,
       });
       await refreshProfile();
+      await AsyncStorage.setItem('hasSeenOnboarding', '1').catch(() => {});
+      await AsyncStorage.removeItem('onboarding_needs_profile').catch(() => {});
       router.back();
     } catch (e) {
       console.error('Profile save failed:', e);
@@ -186,7 +195,11 @@ export default function ProfileEditScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
+        showsVerticalScrollIndicator={true}
+        keyboardShouldPersistTaps="handled"
+      >
         <TouchableOpacity style={styles.avatarSection} onPress={handleChangeAvatar}>
           {isValidImageUri(avatarUri) ? (
             <Image source={{ uri: avatarUri }} style={styles.avatar} />
@@ -274,7 +287,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '700', color: colors.lightText },
   saveBtn: { padding: 8 },
   saveBtnText: { fontSize: 16, fontWeight: '600', color: colors.gold },
-  content: { padding: 16 },
+  content: { padding: 16, paddingBottom: 48 },
   avatarSection: { alignItems: 'center', marginBottom: 24 },
   avatar: { width: 96, height: 96, borderRadius: 48 },
   avatarPlaceholder: {

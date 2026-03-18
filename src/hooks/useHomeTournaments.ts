@@ -3,17 +3,14 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useFocusEffect } from 'expo-router';
 import type { Tournament, UserFish, MetricType, TournamentType } from '@/src/types/tournaments';
 import { getEntryMetricValue } from '@/src/types/tournaments';
 import {
   fetchHomeTournaments,
   voteOnEntry,
 } from '@/src/api/tournaments';
-import { getUserCatches } from '@/src/lib/supabase';
-import { mockUserProfile } from '@/utils/mockData';
+import { getUserCatches, getProfileDisplayItemsBatch } from '@/src/lib/supabase';
 
-const REFRESH_INTERVAL_MS = 45000; // 45 seconds
 const LOAD_TIMEOUT_MS = 15000; // 15s — prevent stuck loading if API hangs
 
 export interface CouldPlaceAlert {
@@ -24,8 +21,6 @@ export interface CouldPlaceAlert {
   userFishMetricDisplay: string;
   currentThirdPlaceMetric: string;
 }
-
-const USER_STATE = (mockUserProfile as { state?: string }).state ?? 'South Carolina';
 
 function mapCatchToUserFish(row: { id: string; species?: string; weight_lb?: number; length_in?: number; taken_at?: string; photo_url?: string }): UserFish {
   return {
@@ -38,7 +33,11 @@ function mapCatchToUserFish(row: { id: string; species?: string; weight_lb?: num
   };
 }
 
-export function useHomeTournaments(scope: 'global' | 'local' = 'global', userId?: string | null) {
+export function useHomeTournaments(
+  scope: 'global' | 'local' = 'global',
+  userId?: string | null,
+  userState?: string | null
+) {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [userFish, setUserFish] = useState<UserFish[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,10 +55,10 @@ export function useHomeTournaments(scope: 'global' | 'local' = 'global', userId?
         setTimeout(() => reject(new Error('Request timed out')), LOAD_TIMEOUT_MS)
       );
       try {
-        const userState = scope === 'local' ? USER_STATE : undefined;
+        const stateForLocal = scope === 'local' ? (userState ?? undefined) : undefined;
         const [t, u] = await Promise.race([
           Promise.all([
-            fetchHomeTournaments(scope, userState, userId),
+            fetchHomeTournaments(scope, stateForLocal, userId),
             userId ? (async () => {
               const { data } = await getUserCatches(userId, 200, 0);
               return (data ?? []).map((r) => mapCatchToUserFish(r as Parameters<typeof mapCatchToUserFish>[0]));
@@ -67,7 +66,16 @@ export function useHomeTournaments(scope: 'global' | 'local' = 'global', userId?
           ]),
           timeoutPromise,
         ]);
-        setTournaments(t);
+        const authorIds = [...new Set(t.flatMap((tournament) => tournament.topEntries.map((e) => e.userId)))];
+        const displayMap = authorIds.length > 0 ? await getProfileDisplayItemsBatch(authorIds) : {};
+        const enriched = t.map((tournament) => ({
+          ...tournament,
+          topEntries: tournament.topEntries.map((e) => ({
+            ...e,
+            displayItems: displayMap[e.userId] ?? [],
+          })),
+        }));
+        setTournaments(enriched);
         setUserFish(u);
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Failed to load');
@@ -78,21 +86,19 @@ export function useHomeTournaments(scope: 'global' | 'local' = 'global', userId?
         setRefreshing(false);
       }
     },
-    [scope, userId]
+    [scope, userId, userState]
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-      intervalRef.current = setInterval(() => loadData(true), REFRESH_INTERVAL_MS);
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      };
-    }, [loadData])
-  );
+  // Initial load only; no refetch on tab focus or interval (user pulls to refresh)
+  useEffect(() => {
+    loadData();
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [loadData]);
 
   const handleRefresh = useCallback(() => loadData(true), [loadData]);
 

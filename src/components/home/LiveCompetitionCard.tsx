@@ -13,6 +13,7 @@ import { colors } from '@/utils/colors';
 import type { FishEntry } from '@/src/types/tournaments';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
 import { LeaderboardRow } from './LeaderboardRow';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 
 interface LiveCompetitionCardProps {
   title: string;
@@ -34,6 +35,7 @@ export function LiveCompetitionCard({
   voteLoading,
 }: LiveCompetitionCardProps) {
   const router = useRouter();
+  const winCheck = useTournamentWinCheckContext();
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -71,7 +73,12 @@ export function LiveCompetitionCard({
         <Text style={styles.liveText}>LIVE</Text>
         <View style={styles.spacer} />
         <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.8)" />
-        <TournamentCountdown endsAt={endsAt} compact onDark />
+        <TournamentCountdown
+          endsAt={endsAt}
+          compact
+          onDark
+          onEnded={winCheck?.triggerCheck}
+        />
         <Text style={styles.entrants}>{entrantsCount} competing</Text>
       </View>
 

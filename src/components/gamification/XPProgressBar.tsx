@@ -11,13 +11,20 @@ export interface XPProgressBarLevelInfo {
   xpForNext: number;
 }
 
+const FIERY_GOLD = '#FF8C00';
+const FIERY_ORANGE = '#FF6B00';
+
 interface XPProgressBarProps {
   levelInfo: XPProgressBarLevelInfo;
   compact?: boolean;
   thick?: boolean;
+  /** Prestige level (0–3). Shown as " · P1" etc next to level when > 0. */
+  prestige?: number;
+  /** When true, prestige label uses fiery gold styling. */
+  prestigeFiery?: boolean;
 }
 
-export function XPProgressBar({ levelInfo, compact = false, thick = false }: XPProgressBarProps) {
+export function XPProgressBar({ levelInfo, compact = false, thick = false, prestige, prestigeFiery = false }: XPProgressBarProps) {
   const { level, title, xpInLevel, xpForNext } = levelInfo;
   const progressAnim = useRef(new Animated.Value(0)).current;
   const progress = xpForNext > 0 ? xpInLevel / xpForNext : 1;
@@ -35,11 +42,25 @@ export function XPProgressBar({ levelInfo, compact = false, thick = false }: XPP
     outputRange: ['0%', '100%'],
   });
 
+  const levelLabel = prestige && prestige > 0 ? `Lv ${level} · P${prestige}` : `Lv ${level}`;
+  const levelLabelLong = prestige && prestige > 0 ? `Level ${level} · P${prestige}` : `Level ${level}`;
+
+  const prestigeLabel = prestige && prestige > 0 ? ` · P${prestige}` : '';
+
   if (compact) {
     return (
       <View style={styles.compactWrap}>
         <View style={styles.compactBadge}>
-          <Text style={styles.compactLevel}>Lv {level}</Text>
+          <Text style={styles.compactLevel}>
+            {prestigeFiery && prestigeLabel ? (
+              <>
+                {`Lv ${level}`}
+                <Text style={styles.prestigeFiery}>{prestigeLabel}</Text>
+              </>
+            ) : (
+              levelLabel
+            )}
+          </Text>
           <Text style={styles.compactTitle}>{title}</Text>
         </View>
         <View style={styles.compactBarBg}>
@@ -56,7 +77,16 @@ export function XPProgressBar({ levelInfo, compact = false, thick = false }: XPP
     <View style={styles.wrap}>
       <View style={styles.header}>
         <View style={styles.badge}>
-          <Text style={styles.levelText}>Level {level}</Text>
+          <Text style={styles.levelText}>
+            {prestigeFiery && prestigeLabel ? (
+              <>
+                {`Level ${level}`}
+                <Text style={styles.prestigeFiery}>{prestigeLabel}</Text>
+              </>
+            ) : (
+              levelLabelLong
+            )}
+          </Text>
           <Text style={styles.titleText}>{title}</Text>
         </View>
         {xpForNext > 0 && (
@@ -94,7 +124,14 @@ const styles = StyleSheet.create({
   levelText: {
     fontSize: 14,
     fontWeight: '700',
-    color: ACCENT_BLUE,
+    color: GOLD,
+  },
+  prestigeFiery: {
+    color: FIERY_GOLD,
+    fontWeight: '800',
+    textShadowColor: FIERY_ORANGE,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
   },
   titleText: {
     fontSize: 16,
@@ -137,7 +174,7 @@ const styles = StyleSheet.create({
   compactLevel: {
     fontSize: 12,
     fontWeight: '800',
-    color: ACCENT_BLUE,
+    color: GOLD,
   },
   compactTitle: {
     fontSize: 13,

@@ -9,6 +9,8 @@ import {
   Image,
   Platform,
   ScrollView,
+  Dimensions,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,13 +20,31 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import { supabase } from '@/src/lib/supabase';
-import { RAW_CATCHES } from '@/utils/feedMockData';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import { useAuthContext } from '@/src/context/AuthContext';
+import { useFeedContext } from '@/src/context/FeedContext';
+import { FeedPostCard } from '@/src/components/home/FeedPostCard';
+import type { FeedPost } from '@/utils/feedMockData';
+
+function isVideoUrl(url: string | number): boolean {
+  if (typeof url !== 'string') return false;
+  try {
+    const path = url.split('?')[0].toLowerCase();
+    return /\.(mp4|webm|mov)(\?|$)/i.test(path) || path.includes('/video/');
+  } catch {
+    return false;
+  }
+}
 
 const TEAL = colors.teal;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const PAD = 14;
+const GAP = 10;
+const TILE_WIDTH = (SCREEN_WIDTH - PAD * 2 - GAP) / 2;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type FilterMode = 'profiles' | 'fish';
+type ResultFilter = 'posts' | 'accounts';
 
 type UserResult = {
   id: string;
@@ -33,43 +53,30 @@ type UserResult = {
   avatar_url?: string | null;
 };
 
-type SpeciesResult = {
-  species: string;
-  count: number;
-};
+type SpeciesResult = { species: string; count: number };
+
+/** General suggestion: species or hashtag - shown first, tap shows posts + accounts */
+type Suggestion = { type: 'species'; label: string; species: string } | { type: 'hashtag'; label: string };
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const RECENTS_KEY = '@Snagged/search_recents';
-const MAX_RECENTS = 8;
+const MAX_RECENTS = 5;
 const DEBOUNCE_MS = 300;
-
-const MOCK_USERS: UserResult[] = [
-  { id: 'user-1',  username: 'BassMaster92',    display_name: 'Jake T.',    avatar_url: 'https://picsum.photos/seed/bm92/80/80' },
-  { id: 'user-2',  username: 'CoastalFlyCo',    display_name: 'Carlos R.',  avatar_url: 'https://picsum.photos/seed/cfc/80/80' },
-  { id: 'user-4',  username: 'GatorBaitMike',   display_name: 'Mike D.',    avatar_url: 'https://picsum.photos/seed/gbm/80/80' },
-  { id: 'user-5',  username: 'KeysTarponKing',  display_name: 'Ryan K.',    avatar_url: 'https://picsum.photos/seed/ktk/80/80' },
-  { id: 'user-6',  username: 'SnakeheadSlayer', display_name: 'Dee W.',     avatar_url: 'https://picsum.photos/seed/ssh/80/80' },
-  { id: 'user-7',  username: 'GeorgiaBassPro',  display_name: 'Chris B.',   avatar_url: 'https://picsum.photos/seed/gbp/80/80' },
-  { id: 'user-8',  username: 'AlabamaAngler',   display_name: 'Tom A.',     avatar_url: 'https://picsum.photos/seed/aa/80/80' },
-  { id: 'user-9',  username: 'TXRedFishKing',   display_name: 'Luis G.',    avatar_url: 'https://picsum.photos/seed/txrfk/80/80' },
-  { id: 'user-jc', username: 'jcamobell5332',   display_name: 'J. Campbell', avatar_url: null },
-];
+const MAX_SUGGESTIONS = 6;
 
 const POPULAR_SPECIES = [
   'Largemouth Bass', 'Smallmouth Bass', 'Tarpon', 'Snook', 'Red Drum',
-  'Striped Bass', 'Flounder', 'Trout', 'Channel Catfish', 'Northern Snakehead',
-  'Carp', 'Crappie', 'Walleye', 'Pike',
+  'Striped Bass', 'Trout', 'Channel Catfish', 'Northern Snakehead',
 ];
 
 const SPECIES_EMOJI: Record<string, string> = {
   'Largemouth Bass': '🐟', 'Smallmouth Bass': '🐟', 'Striped Bass': '🐟',
   'Tarpon': '🐠', 'Snook': '🐡', 'Red Drum': '🎣',
-  'Channel Catfish': '🐱', 'Northern Snakehead': '🐍',
-  'Flounder': '🫓', 'Trout': '🐙',
+  'Channel Catfish': '🐱', 'Northern Snakehead': '🐍', 'Trout': '🐙',
 };
 
-// ─── AsyncStorage helpers ────────────────────────────────────────────────────
+// ─── AsyncStorage ─────────────────────────────────────────────────────────────
 
 async function loadRecents(): Promise<string[]> {
   try {
@@ -90,7 +97,7 @@ async function deleteRecent(q: string, current: string[]): Promise<string[]> {
   return next;
 }
 
-// ─── Search functions (pure, no state side-effects) ─────────────────────────
+// ─── Search API ──────────────────────────────────────────────────────────────
 
 async function fetchProfiles(q: string): Promise<UserResult[]> {
   const pattern = `%${q}%`;
@@ -99,67 +106,73 @@ async function fetchProfiles(q: string): Promise<UserResult[]> {
     .select('id, username, display_name, avatar_url')
     .or(`username.ilike.${pattern},display_name.ilike.${pattern}`)
     .limit(30);
-
-  const remote: UserResult[] = (data ?? []).map((u) => ({
+  return (data ?? []).map((u) => ({
     id: u.id,
     username: u.username ?? null,
     display_name: (u as { display_name?: string }).display_name ?? null,
-    avatar_url: (u as any).avatar_url ?? null,
+    avatar_url: (u as { avatar_url?: string | null }).avatar_url ?? null,
   }));
-
-  // Merge mock users that match (dev fallback)
-  const qLow = q.toLowerCase();
-  const existingIds = new Set(remote.map((r) => r.id));
-  const mocks = MOCK_USERS.filter(
-    (u) =>
-      (u.username ?? '').toLowerCase().includes(qLow) ||
-      (u.display_name ?? '').toLowerCase().includes(qLow)
-  );
-  for (const m of mocks) {
-    if (!existingIds.has(m.id)) remote.push(m);
-  }
-  return remote;
 }
 
 async function fetchSpecies(q: string): Promise<SpeciesResult[]> {
   const pattern = `%${q}%`;
   const { data } = await supabase
-    .from('catches')
+    .from('feed_posts')
     .select('id, species')
     .ilike('species', pattern)
-    .is('deleted_at', null)
-    .limit(200);
-
+    .not('species', 'is', null)
+    .limit(500);
   const groups: Record<string, number> = {};
-  for (const c of data ?? []) {
-    const sp = c.species ?? 'Unknown';
+  for (const row of data ?? []) {
+    const sp = (row.species ?? '').trim() || 'Unknown';
+    if (sp === 'Unknown') continue;
     groups[sp] = (groups[sp] ?? 0) + 1;
   }
-
-  const remote: SpeciesResult[] = Object.entries(groups)
+  return Object.entries(groups)
     .map(([species, count]) => ({ species, count }))
     .sort((a, b) => b.count - a.count);
-
-  // Merge mock feed species
-  const qLow = q.toLowerCase();
-  const existingSpecies = new Set(remote.map((r) => r.species));
-  const mockGroups: Record<string, number> = {};
-  for (const post of RAW_CATCHES) {
-    const sp = post.species ?? '';
-    if (sp && sp.toLowerCase().includes(qLow)) {
-      mockGroups[sp] = (mockGroups[sp] ?? 0) + 1;
-    }
-  }
-  for (const [species, count] of Object.entries(mockGroups)) {
-    if (!existingSpecies.has(species)) remote.push({ species, count });
-  }
-
-  return remote;
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+/** Extract hashtags from captions that contain the query (e.g. "tar" → #tarpon). */
+async function fetchHashtagSuggestions(q: string): Promise<string[]> {
+  const pattern = `%${q}%`;
+  const { data } = await supabase
+    .from('feed_posts')
+    .select('caption')
+    .ilike('caption', pattern)
+    .not('caption', 'is', null)
+    .limit(100);
+  const tags = new Set<string>();
+  const hashRegex = /#(\w+)/g;
+  const lower = q.toLowerCase();
+  for (const row of data ?? []) {
+    const cap = (row.caption ?? '') as string;
+    let m: RegExpExecArray | null;
+    hashRegex.lastIndex = 0;
+    while ((m = hashRegex.exec(cap)) !== null) {
+      const tag = '#' + m[1];
+      if (m[1].toLowerCase().includes(lower)) tags.add(tag);
+    }
+  }
+  return [...tags].slice(0, 5);
+}
 
-function ProfileRow({ item, onPress }: { item: UserResult; onPress: () => void }) {
+/** General suggestions: species + hashtags close to query (first 5–6). */
+async function fetchSuggestions(q: string): Promise<Suggestion[]> {
+  const [species, hashtags] = await Promise.all([
+    fetchSpecies(q),
+    fetchHashtagSuggestions(q),
+  ]);
+  const list: Suggestion[] = [
+    ...species.slice(0, 4).map((s) => ({ type: 'species' as const, label: s.species, species: s.species })),
+    ...hashtags.slice(0, 3).map((h) => ({ type: 'hashtag' as const, label: h })),
+  ];
+  return list.slice(0, MAX_SUGGESTIONS);
+}
+
+// ─── Grid tile components (2 per row) ──────────────────────────────────────────
+
+function ProfileTile({ item, onPress }: { item: UserResult; onPress: () => void }) {
   const [imgFailed, setImgFailed] = useState(false);
   const url = item.avatar_url ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${item.id}`;
   const isSvg = url.includes('.svg');
@@ -167,41 +180,72 @@ function ProfileRow({ item, onPress }: { item: UserResult; onPress: () => void }
   const initials = name.slice(0, 2).toUpperCase();
 
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.72}>
-      <View style={styles.avatarWrap}>
-        {!imgFailed && !isSvg ? (
-          <Image source={{ uri: url }} style={styles.avatar} onError={() => setImgFailed(true)} />
-        ) : (
-          <View style={[styles.avatar, styles.avatarFallback]}>
-            <Text style={styles.avatarInitials}>{initials}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.rowInfo}>
-        <Text style={styles.rowPrimary} numberOfLines={1}>@{item.username ?? 'unknown'}</Text>
-        {item.display_name ? (
-          <Text style={styles.rowSecondary} numberOfLines={1}>{item.display_name}</Text>
-        ) : null}
-      </View>
-      <Ionicons name="chevron-forward" size={16} color={colors.lightSubtext} />
+    <TouchableOpacity style={[styles.tile, { width: TILE_WIDTH }]} onPress={onPress} activeOpacity={0.72}>
+      {!imgFailed && !isSvg ? (
+        <Image source={{ uri: url }} style={styles.tileAvatar} onError={() => setImgFailed(true)} />
+      ) : (
+        <View style={[styles.tileAvatar, styles.tileAvatarFallback]}>
+          <Text style={styles.tileAvatarInitials}>{initials}</Text>
+        </View>
+      )}
+      <Text style={styles.tilePrimary} numberOfLines={1}>@{item.username ?? 'unknown'}</Text>
+      {item.display_name ? (
+        <Text style={styles.tileSecondary} numberOfLines={1}>{item.display_name}</Text>
+      ) : null}
     </TouchableOpacity>
   );
 }
 
-function SpeciesRow({ item, onPress }: { item: SpeciesResult; onPress: () => void }) {
-  const emoji = SPECIES_EMOJI[item.species] ?? '🐟';
+function SuggestionTile({ item, onPress }: { item: Suggestion; onPress: () => void }) {
+  const icon = item.type === 'species' ? (SPECIES_EMOJI[item.species] ?? '🐟') : item.label;
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.72}>
-      <View style={styles.speciesIconWrap}>
-        <Text style={styles.speciesEmoji}>{emoji}</Text>
+    <TouchableOpacity style={[styles.tile, styles.suggestionTile, { width: TILE_WIDTH }]} onPress={onPress} activeOpacity={0.72}>
+      <View style={styles.suggestionIconWrap}>
+        <Text style={styles.suggestionIcon} numberOfLines={1}>{icon}</Text>
       </View>
-      <View style={styles.rowInfo}>
-        <Text style={styles.rowPrimary} numberOfLines={1}>{item.species}</Text>
-        {item.count > 0 && (
-          <Text style={styles.rowSecondary}>{item.count} {item.count === 1 ? 'catch' : 'catches'}</Text>
-        )}
+      <Text style={styles.tilePrimary} numberOfLines={1}>{item.label}</Text>
+      <Text style={styles.tileSecondary}>{item.type === 'species' ? 'Species' : 'Hashtag'}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function PostTile({ post, onPress }: { post: FeedPost; onPress: () => void }) {
+  const photoUrl = typeof post.photoUrl === 'string' ? post.photoUrl : undefined;
+  const isVideo = photoUrl != null && isVideoUrl(photoUrl);
+  const [videoThumbnailUri, setVideoThumbnailUri] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isVideo || !photoUrl) return;
+    let cancelled = false;
+    VideoThumbnails.getThumbnailAsync(photoUrl, { time: 0 })
+      .then(({ uri }) => {
+        if (!cancelled) setVideoThumbnailUri(uri);
+      })
+      .catch(() => {
+        if (!cancelled) setVideoThumbnailUri(null);
+      });
+    return () => { cancelled = true; };
+  }, [isVideo, photoUrl]);
+
+  const imageUri = isVideo ? (videoThumbnailUri ?? undefined) : photoUrl;
+  const showPlaceholder = !imageUri;
+
+  return (
+    <TouchableOpacity style={[styles.tile, styles.postTile, { width: TILE_WIDTH }]} onPress={onPress} activeOpacity={0.85}>
+      {imageUri && !showPlaceholder ? (
+        <Image source={{ uri: imageUri }} style={styles.postTileImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.postTileImage, styles.postTileImagePlaceholder]}>
+          {isVideo ? (
+            <Ionicons name="videocam-outline" size={28} color={colors.lightSubtext} />
+          ) : (
+            <Ionicons name="image-outline" size={28} color={colors.lightSubtext} />
+          )}
+        </View>
+      )}
+      <View style={styles.postTileOverlay}>
+        <Text style={styles.postTileUser} numberOfLines={1}>{post.username}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color={colors.lightSubtext} />
     </TouchableOpacity>
   );
 }
@@ -210,81 +254,88 @@ function SpeciesRow({ item, onPress }: { item: SpeciesResult; onPress: () => voi
 
 export default function SearchScreen() {
   const router = useRouter();
+  const { user } = useAuthContext();
+  const { searchFeedPosts, handlePostHype, handleAddComment, loadComments, handleShare } = useFeedContext();
 
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterMode>('profiles');
+  const [selectedTerm, setSelectedTerm] = useState<string | null>(null);
+  const [resultFilter, setResultFilter] = useState<ResultFilter>('posts');
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [profileResults, setProfileResults] = useState<UserResult[]>([]);
-  const [speciesResults, setSpeciesResults] = useState<SpeciesResult[]>([]);
+  const [postResults, setPostResults] = useState<FeedPost[]>([]);
   const [recents, setRecents] = useState<string[]>([]);
+  const [selectedPost, setSelectedPost] = useState<FeedPost | null>(null);
 
-  // Store recents in a ref so search callbacks never go stale from it
   const recentsRef = useRef<string[]>([]);
   useEffect(() => { recentsRef.current = recents; }, [recents]);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Incrementing id so we can ignore results from superseded searches
   const searchIdRef = useRef(0);
 
   useEffect(() => {
     loadRecents().then((r) => setRecents(r));
   }, []);
 
-  // ── Core search — no state in deps, uses refs to avoid stale closures ──────
-  const runSearch = useCallback(async (q: string, f: FilterMode) => {
+  /** Unified search while typing: suggestions (species/hashtags) + profiles. No filter. */
+  const runSearch = useCallback(async (q: string) => {
     const trimmed = q.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setSuggestions([]);
+      setProfileResults([]);
+      return;
+    }
 
     const id = ++searchIdRef.current;
     setLoading(true);
 
     try {
-      if (f === 'profiles') {
-        const res = await fetchProfiles(trimmed);
-        if (id !== searchIdRef.current) return; // superseded
-        setProfileResults(res);
-        setSpeciesResults([]);
-      } else {
-        const res = await fetchSpecies(trimmed);
-        if (id !== searchIdRef.current) return;
-        setSpeciesResults(res);
-        setProfileResults([]);
-      }
-
-      // Persist to recents using the ref (no closure over state)
+      const [sug, prof] = await Promise.all([fetchSuggestions(trimmed), fetchProfiles(trimmed)]);
+      if (id !== searchIdRef.current) return;
+      setSuggestions(sug);
+      setProfileResults(prof);
       const updated = await persistRecent(trimmed, recentsRef.current);
       if (id === searchIdRef.current) setRecents(updated);
     } catch {
       if (id === searchIdRef.current) {
+        setSuggestions([]);
         setProfileResults([]);
-        setSpeciesResults([]);
       }
     } finally {
       if (id === searchIdRef.current) setLoading(false);
     }
-  }, []); // ← no state deps — completely stable reference
+  }, []);
 
-  // ── Debounce on query or filter change ────────────────────────────────────
+  /** After user selects a suggestion or submits: load posts for that term. */
+  const loadResultsForTerm = useCallback(async (term: string) => {
+    setLoading(true);
+    try {
+      const posts = await searchFeedPosts(term, 50);
+      setPostResults(posts);
+      const prof = await fetchProfiles(term);
+      setProfileResults(prof);
+    } catch {
+      setPostResults([]);
+      setProfileResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [searchFeedPosts]);
+
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-
     const trimmed = query.trim();
     if (!trimmed) {
       setLoading(false);
+      setSuggestions([]);
       setProfileResults([]);
-      setSpeciesResults([]);
       return;
     }
-
     setLoading(true);
-    debounceRef.current = setTimeout(() => runSearch(query, filter), DEBOUNCE_MS);
+    debounceRef.current = setTimeout(() => runSearch(query), DEBOUNCE_MS);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, runSearch]);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [query, filter, runSearch]);
-
-  // ── Handlers ─────────────────────────────────────────────────────────────
   const handleDeleteRecent = useCallback(async (q: string) => {
     const updated = await deleteRecent(q, recentsRef.current);
     setRecents(updated);
@@ -292,17 +343,30 @@ export default function SearchScreen() {
 
   const handleClear = useCallback(() => {
     setQuery('');
+    setSelectedTerm(null);
+    setSuggestions([]);
     setProfileResults([]);
-    setSpeciesResults([]);
+    setPostResults([]);
   }, []);
 
-  // ── Derived ───────────────────────────────────────────────────────────────
-  const isSearching = query.trim().length > 0;
+  const onSelectSuggestion = useCallback((term: string) => {
+    setSelectedTerm(term);
+    loadResultsForTerm(term);
+  }, [loadResultsForTerm]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const onSubmitSearch = useCallback(() => {
+    const trimmed = query.trim();
+    if (trimmed) {
+      setSelectedTerm(trimmed);
+      loadResultsForTerm(trimmed);
+    }
+  }, [query, loadResultsForTerm]);
+
+  const isSearching = query.trim().length > 0;
+  const showFilterTabs = selectedTerm != null;
+
   const renderContent = () => {
-    // ── Empty query: show recents + hint ────────────────────────────────────
-    if (!isSearching) {
+    if (!isSearching && !selectedTerm) {
       return (
         <>
           {recents.length > 0 && (
@@ -311,11 +375,7 @@ export default function SearchScreen() {
               <View style={styles.card}>
                 {recents.map((q, idx) => (
                   <View key={q}>
-                    <TouchableOpacity
-                      style={styles.row}
-                      onPress={() => setQuery(q)}
-                      activeOpacity={0.7}
-                    >
+                    <TouchableOpacity style={styles.row} onPress={() => setQuery(q)} activeOpacity={0.7}>
                       <View style={styles.recentIconWrap}>
                         <Ionicons name="time-outline" size={16} color={colors.lightSubtext} />
                       </View>
@@ -330,42 +390,81 @@ export default function SearchScreen() {
               </View>
             </View>
           )}
-
-          {filter === 'fish' && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Popular Species</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.pillsRow}
-              >
-                {POPULAR_SPECIES.map((sp) => (
-                  <TouchableOpacity
-                    key={sp}
-                    style={styles.pill}
-                    onPress={() => setQuery(sp)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={styles.pillEmoji}>{SPECIES_EMOJI[sp] ?? '🐟'}</Text>
-                    <Text style={styles.pillTxt}>{sp}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-
-          {filter === 'profiles' && (
-            <View style={styles.hint}>
-              <Ionicons name="person-outline" size={40} color={colors.lightBorder} />
-              <Text style={styles.hintTitle}>Find anglers</Text>
-              <Text style={styles.hintBody}>Search by username or name</Text>
-            </View>
-          )}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Popular</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsRow}>
+              {POPULAR_SPECIES.map((sp) => (
+                <TouchableOpacity key={sp} style={styles.pill} onPress={() => { setQuery(sp); onSelectSuggestion(sp); }} activeOpacity={0.75}>
+                  <Text style={styles.pillEmoji}>{SPECIES_EMOJI[sp] ?? '🐟'}</Text>
+                  <Text style={styles.pillTxt}>{sp}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+          <View style={styles.hint}>
+            <Ionicons name="search-outline" size={40} color={colors.lightBorder} />
+            <Text style={styles.hintTitle}>Search species, #hashtags, or people</Text>
+            <Text style={styles.hintBody}>First results match what you type — tap to see posts and accounts</Text>
+          </View>
         </>
       );
     }
 
-    // ── Loading ──────────────────────────────────────────────────────────────
+    if (showFilterTabs) {
+      if (loading) {
+        return (
+          <View style={styles.hint}>
+            <ActivityIndicator size="large" color={TEAL} />
+            <Text style={styles.hintBody}>Loading…</Text>
+          </View>
+        );
+      }
+      if (resultFilter === 'posts') {
+        if (postResults.length === 0) {
+          return (
+            <View style={styles.hint}>
+              <Ionicons name="image-outline" size={38} color={colors.lightBorder} />
+              <Text style={styles.hintTitle}>No posts</Text>
+              <Text style={styles.hintBody}>No posts for "{selectedTerm}"</Text>
+            </View>
+          );
+        }
+        return (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Posts for "{selectedTerm}"</Text>
+            <View style={styles.grid}>
+              {postResults.map((post) => (
+                <PostTile
+                  key={post.id}
+                  post={post}
+                  onPress={() => setSelectedPost(post)}
+                />
+              ))}
+            </View>
+          </View>
+        );
+      }
+      if (profileResults.length === 0) {
+        return (
+          <View style={styles.hint}>
+            <Ionicons name="person-outline" size={38} color={colors.lightBorder} />
+            <Text style={styles.hintTitle}>No accounts</Text>
+            <Text style={styles.hintBody}>No profiles matching "{selectedTerm}"</Text>
+          </View>
+        );
+      }
+      return (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Accounts</Text>
+          <View style={styles.grid}>
+            {profileResults.map((item) => (
+              <ProfileTile key={item.id} item={item} onPress={() => router.push(`/user/${item.id}`)} />
+            ))}
+          </View>
+        </View>
+      );
+    }
+
     if (loading) {
       return (
         <View style={styles.hint}>
@@ -375,70 +474,40 @@ export default function SearchScreen() {
       );
     }
 
-    // ── Profile results ──────────────────────────────────────────────────────
-    if (filter === 'profiles') {
-      if (profileResults.length === 0) {
-        return (
+    return (
+      <>
+        {suggestions.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Suggestions — tap to see posts</Text>
+            <View style={styles.grid}>
+              {suggestions.map((item) => (
+                <SuggestionTile
+                  key={item.type + item.label}
+                  item={item}
+                  onPress={() => onSelectSuggestion(item.type === 'hashtag' ? item.label : item.label)}
+                />
+              ))}
+            </View>
+          </View>
+        )}
+        {profileResults.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>People</Text>
+            <View style={styles.grid}>
+              {profileResults.map((item) => (
+                <ProfileTile key={item.id} item={item} onPress={() => router.push(`/user/${item.id}`)} />
+              ))}
+            </View>
+          </View>
+        )}
+        {!loading && suggestions.length === 0 && profileResults.length === 0 && isSearching && (
           <View style={styles.hint}>
             <Ionicons name="search-outline" size={38} color={colors.lightBorder} />
             <Text style={styles.hintTitle}>No results</Text>
-            <Text style={styles.hintBody}>Try searching by username or display name</Text>
+            <Text style={styles.hintBody}>Try species, #hashtags, or a username</Text>
           </View>
-        );
-      }
-      return (
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>People</Text>
-            <View style={styles.countBadge}>
-              <Text style={styles.countBadgeTxt}>{profileResults.length}</Text>
-            </View>
-          </View>
-          <View style={styles.card}>
-            {profileResults.map((item, idx) => (
-              <View key={item.id}>
-                <ProfileRow item={item} onPress={() => router.push(`/user/${item.id}`)} />
-                {idx < profileResults.length - 1 && <View style={styles.divider} />}
-              </View>
-            ))}
-          </View>
-        </View>
-      );
-    }
-
-    // ── Species results ──────────────────────────────────────────────────────
-    if (speciesResults.length === 0) {
-      return (
-        <View style={styles.hint}>
-          <Ionicons name="search-outline" size={38} color={colors.lightBorder} />
-          <Text style={styles.hintTitle}>No results</Text>
-          <Text style={styles.hintBody}>Try a species like "Bass" or "Tarpon"</Text>
-        </View>
-      );
-    }
-    return (
-      <View style={styles.section}>
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Species</Text>
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeTxt}>{speciesResults.length}</Text>
-          </View>
-        </View>
-        <View style={styles.card}>
-          {speciesResults.map((item, idx) => (
-            <View key={item.species}>
-              <SpeciesRow
-                item={item}
-                onPress={() => {
-                  setQuery(item.species);
-                  setFilter('fish');
-                }}
-              />
-              {idx < speciesResults.length - 1 && <View style={styles.divider} />}
-            </View>
-          ))}
-        </View>
-      </View>
+        )}
+      </>
     );
   };
 
@@ -446,14 +515,13 @@ export default function SearchScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ParticleBackground />
 
-      {/* Search bar */}
       <View style={styles.header}>
         <SnaggedWordmark />
         <View style={styles.inputWrap}>
           <Ionicons name="search-outline" size={17} color={colors.lightSubtext} />
           <TextInput
             style={styles.input}
-            placeholder={filter === 'profiles' ? 'Search anglers…' : 'Search species…'}
+            placeholder="Search species, #hashtags, people…"
             placeholderTextColor={colors.lightSubtext}
             value={query}
             onChangeText={setQuery}
@@ -461,10 +529,9 @@ export default function SearchScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
+            onSubmitEditing={onSubmitSearch}
           />
-          {loading && (
-            <ActivityIndicator size="small" color={TEAL} style={{ marginRight: 2 }} />
-          )}
+          {loading && <ActivityIndicator size="small" color={TEAL} style={{ marginRight: 2 }} />}
           {!loading && query.length > 0 && (
             <TouchableOpacity onPress={handleClear} hitSlop={8}>
               <Ionicons name="close-circle" size={18} color={colors.lightSubtext} />
@@ -473,28 +540,28 @@ export default function SearchScreen() {
         </View>
       </View>
 
-      {/* Filter tabs */}
-      <View style={styles.filterRow}>
-        {(['profiles', 'fish'] as FilterMode[]).map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterTab, filter === f && styles.filterTabActive]}
-            onPress={() => setFilter(f)}
-            activeOpacity={0.75}
-          >
-            <Ionicons
-              name={f === 'profiles' ? 'person-outline' : 'fish-outline'}
-              size={15}
-              color={filter === f ? '#000' : colors.lightSubtext}
-            />
-            <Text style={[styles.filterTabTxt, filter === f && styles.filterTabTxtActive]}>
-              {f === 'profiles' ? 'Profiles' : 'Fish'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {showFilterTabs && (
+        <View style={styles.filterRow}>
+          {(['posts', 'accounts'] as ResultFilter[]).map((f) => (
+            <TouchableOpacity
+              key={f}
+              style={[styles.filterTab, resultFilter === f && styles.filterTabActive]}
+              onPress={() => setResultFilter(f)}
+              activeOpacity={0.75}
+            >
+              <Ionicons
+                name={f === 'posts' ? 'image-outline' : 'person-outline'}
+                size={15}
+                color={resultFilter === f ? '#000' : colors.lightSubtext}
+              />
+              <Text style={[styles.filterTabTxt, resultFilter === f && styles.filterTabTxtActive]}>
+                {f === 'posts' ? 'Posts' : 'Accounts'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
-      {/* Results */}
       <ScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent}
@@ -502,6 +569,48 @@ export default function SearchScreen() {
       >
         {renderContent()}
       </ScrollView>
+
+      {/* Full-screen post view (same as home feed) */}
+      <Modal
+        visible={selectedPost != null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setSelectedPost(null)}
+      >
+        <View style={styles.postModalRoot}>
+          <View style={styles.postModalHeader}>
+            <TouchableOpacity onPress={() => setSelectedPost(null)} style={styles.postModalClose} hitSlop={12}>
+              <Ionicons name="close" size={28} color={colors.lightText} />
+            </TouchableOpacity>
+          </View>
+          {selectedPost && (
+            <ScrollView
+              style={styles.postModalScroll}
+              contentContainerStyle={styles.postModalScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <FeedPostCard
+                post={selectedPost}
+                isScreenFocused={true}
+                onHype={(postId, hyped) => {
+                  if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+                  handlePostHype(postId, hyped);
+                }}
+                onAddComment={(postId, text, replyMeta) => {
+                  if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+                  handleAddComment(postId, text, replyMeta);
+                }}
+                onShare={(postId) => {
+                  if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+                  handleShare(postId);
+                }}
+                loadComments={loadComments}
+              />
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -511,7 +620,6 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.lightBackground },
 
-  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -521,13 +629,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.lightBorder,
     backgroundColor: colors.lightCard + 'f0',
-  },
-  headerSnagged: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 22,
-    color: '#00e5c8',
-    letterSpacing: 2,
-    marginRight: 8,
   },
   inputWrap: {
     flex: 1,
@@ -541,14 +642,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.lightBorder,
   },
-  input: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.lightText,
-    padding: 0,
-  },
+  input: { flex: 1, fontSize: 15, color: colors.lightText, padding: 0 },
 
-  // Filter tabs
   filterRow: {
     flexDirection: 'row',
     paddingHorizontal: 14,
@@ -572,18 +667,9 @@ const styles = StyleSheet.create({
   filterTabTxt: { fontSize: 13, fontWeight: '600', color: colors.lightSubtext },
   filterTabTxtActive: { color: '#000', fontWeight: '700' },
 
-  // Scroll content
   scrollContent: { paddingBottom: 48, paddingTop: 6 },
 
-  // Section
   section: { paddingTop: 14 },
-  sectionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 7,
-    gap: 8,
-  },
   sectionTitle: {
     fontSize: 11,
     fontWeight: '700',
@@ -593,15 +679,54 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 7,
   },
-  countBadge: {
-    backgroundColor: TEAL + '20',
-    borderRadius: 8,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-  },
-  countBadgeTxt: { fontSize: 11, fontWeight: '600', color: TEAL },
 
-  // Card container
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: PAD,
+    gap: GAP,
+  },
+
+  tile: {
+    backgroundColor: colors.lightCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.lightBorder,
+    padding: 12,
+    alignItems: 'center',
+  },
+  tilePrimary: { fontSize: 13, fontWeight: '700', color: colors.lightText },
+  tileSecondary: { fontSize: 11, color: colors.lightSubtext, marginTop: 2 },
+
+  tileAvatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.lightBorder, marginBottom: 6 },
+  tileAvatarFallback: { justifyContent: 'center', alignItems: 'center', backgroundColor: TEAL + '30' },
+  tileAvatarInitials: { fontSize: 18, fontWeight: '800', color: TEAL },
+
+  suggestionTile: { paddingVertical: 14 },
+  suggestionIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: TEAL + '18',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  suggestionIcon: { fontSize: 20 },
+
+  postTile: { padding: 0, overflow: 'hidden' },
+  postTileImage: { width: '100%', aspectRatio: 1, backgroundColor: colors.lightBorder },
+  postTileImagePlaceholder: { justifyContent: 'center', alignItems: 'center' },
+  postTileOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 6,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  postTileUser: { fontSize: 11, fontWeight: '600', color: '#fff' },
+
   card: {
     marginHorizontal: 14,
     borderRadius: 14,
@@ -612,7 +737,6 @@ const styles = StyleSheet.create({
   },
   divider: { height: 1, backgroundColor: colors.lightBorder, marginLeft: 70 },
 
-  // Shared row
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -624,13 +748,11 @@ const styles = StyleSheet.create({
   rowPrimary: { fontSize: 15, fontWeight: '700', color: colors.lightText },
   rowSecondary: { fontSize: 12, color: colors.lightSubtext, marginTop: 2 },
 
-  // Avatar
   avatarWrap: { flexShrink: 0 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.lightBorder },
   avatarFallback: { justifyContent: 'center', alignItems: 'center', backgroundColor: TEAL + '30' },
   avatarInitials: { fontSize: 16, fontWeight: '800', color: TEAL },
 
-  // Species icon
   speciesIconWrap: {
     width: 44,
     height: 44,
@@ -642,7 +764,6 @@ const styles = StyleSheet.create({
   },
   speciesEmoji: { fontSize: 22 },
 
-  // Recents
   recentIconWrap: {
     width: 32,
     height: 32,
@@ -654,13 +775,7 @@ const styles = StyleSheet.create({
   },
   recentTxt: { fontSize: 14, color: colors.lightText, fontWeight: '500' },
 
-  // Popular pills
-  pillsRow: {
-    paddingHorizontal: 14,
-    paddingBottom: 4,
-    gap: 8,
-    flexDirection: 'row',
-  },
+  pillsRow: { paddingHorizontal: 14, paddingBottom: 4, gap: 8, flexDirection: 'row' },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -675,13 +790,22 @@ const styles = StyleSheet.create({
   pillEmoji: { fontSize: 15 },
   pillTxt: { fontSize: 13, fontWeight: '600', color: colors.lightText },
 
-  // Hint / empty
-  hint: {
-    alignItems: 'center',
-    paddingTop: 52,
-    paddingHorizontal: 32,
-    gap: 10,
-  },
+  hint: { alignItems: 'center', paddingTop: 52, paddingHorizontal: 32, gap: 10 },
   hintTitle: { fontSize: 17, fontWeight: '700', color: colors.lightText },
   hintBody: { fontSize: 13, color: colors.lightSubtext, textAlign: 'center', lineHeight: 19 },
+
+  postModalRoot: { flex: 1, backgroundColor: colors.lightBackground },
+  postModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.lightBorder,
+    backgroundColor: colors.lightCard + 'f0',
+  },
+  postModalClose: { padding: 4 },
+  postModalScroll: { flex: 1 },
+  postModalScrollContent: { paddingBottom: 48 },
 });

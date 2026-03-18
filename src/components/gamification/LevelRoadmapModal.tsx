@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
-import { LEVEL_ROADMAP } from '@/src/types/gamification';
+import { LEVEL_ROADMAP, XP_NEEDED_FOR_LEVEL } from '@/src/types/gamification';
 
 interface LevelRoadmapModalProps {
   visible: boolean;
@@ -48,9 +48,10 @@ export function LevelRoadmapModal({
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {LEVEL_ROADMAP.map(({ level, title, xpRequired }) => {
+            {LEVEL_ROADMAP.map(({ level, title, xpRequired }, idx) => {
               const isCurrent = level === currentLevel;
               const isUnlocked = level <= currentLevel;
+              const xpThisLevel = XP_NEEDED_FOR_LEVEL[idx] ?? 0;
               return (
                 <View
                   key={level}
@@ -81,7 +82,7 @@ export function LevelRoadmapModal({
                         !isUnlocked && styles.rowXpLocked,
                       ]}
                     >
-                      {xpRequired === 0 ? '0 XP (start)' : `${xpRequired} XP`}
+                      {xpRequired === 0 ? '0 XP (start)' : `${xpThisLevel} XP this level`}
                     </Text>
                   </View>
                   {isCurrent && (

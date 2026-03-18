@@ -13,6 +13,7 @@ import type {
 } from '@/src/types/tournaments';
 import {
   getTournaments,
+  getTournamentById,
   getTournamentEntries,
   insertTournamentEntry,
   voteOnTournamentEntry,
@@ -20,6 +21,8 @@ import {
   isUserEnteredInTournament as dbIsUserEntered,
   countUserTournamentEntries as dbCountUserTournamentEntries,
 } from '@/src/lib/tournamentDb';
+import { isValidUuid } from '@/src/lib/supabase';
+import { recordTournamentEntryForDailyQuest } from '@/src/lib/dailyQuests';
 
 export const SPECIES_MATCH: Record<string, (s: string) => boolean> = {
   'biggest-fish-this-week': () => true,
@@ -30,6 +33,8 @@ export const SPECIES_MATCH: Record<string, (s: string) => boolean> = {
   'tournament-striper': (s) =>
     s.toLowerCase().includes('striped') || s.toLowerCase().includes('striper'),
   'tournament-tarpon': (s) => s.toLowerCase().includes('tarpon'),
+  'tournament-freshwater-trout': (s) =>
+    s.toLowerCase().includes('trout') && !s.toLowerCase().includes('sea trout'),
   'tournament-smallest': (s) => {
     const lower = s.toLowerCase();
     const isBait =
@@ -62,6 +67,23 @@ function sortEntriesByMetric(
 }
 
 /**
+ * Fetch a single tournament by id (one query, no entries). Use for detail screen so countdown/time-to-end loads fast.
+ */
+export async function fetchSingleTournament(tournamentId: string): Promise<Tournament | null> {
+  const row = await getTournamentById(tournamentId);
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: row.type as TournamentType,
+    title: row.title,
+    metricType: row.metric_type as MetricType,
+    endsAt: row.cycle_ends_at ?? row.ends_at ?? undefined,
+    entrantsCount: 0,
+    topEntries: [],
+  };
+}
+
+/**
  * Fetch tournaments with entries from Supabase.
  * scope='local' + userState filters entries to users in that state.
  */
@@ -90,7 +112,7 @@ export async function fetchHomeTournaments(
       type: row.type as TournamentType,
       title: row.title,
       metricType: row.metric_type as MetricType,
-      endsAt: row.ends_at ?? undefined,
+      endsAt: row.cycle_ends_at ?? row.ends_at ?? undefined,
       entrantsCount: sorted.length,
       topEntries: sorted.slice(0, 3),
     });
@@ -128,20 +150,22 @@ export async function fetchTournamentEntries(
   scope: 'global' | 'local' = 'global',
   userState?: string,
   currentUserId?: string | null
-): Promise<{ entries: FishEntry[]; nextPage?: number }> {
+): Promise<{ entries: FishEntry[]; nextPage?: number; totalCount?: number }> {
+  const rows = await getTournaments();
+  const t = rows.find((r) => r.id === tournamentId);
   const raw = await getTournamentEntries(
     tournamentId,
     currentUserId ?? null,
     scope,
-    scope === 'local' ? userState : undefined
+    scope === 'local' ? userState : undefined,
+    t?.cycle_id
   );
-  const rows = await getTournaments();
-  const t = rows.find((r) => r.id === tournamentId);
-  const sorted = sortEntriesByMetric(
-    raw,
-    t?.type ?? 'BIGGEST_FISH',
-    t?.metric_type ?? 'LENGTH_IN'
-  );
+  // Smallest-fish: smallest inches win (ascending). Fallback by id if type missing.
+  const sortType =
+    t?.type === 'SMALLEST_FISH' || tournamentId === 'tournament-smallest'
+      ? 'SMALLEST_FISH'
+      : (t?.type ?? 'BIGGEST_FISH');
+  const sorted = sortEntriesByMetric(raw, sortType, t?.metric_type ?? 'LENGTH_IN');
   const start = page * pageSize;
   const entries = sorted.slice(start, start + pageSize);
   const hasMore = start + entries.length < sorted.length;
@@ -149,6 +173,7 @@ export async function fetchTournamentEntries(
   return {
     entries,
     nextPage: hasMore ? page + 1 : undefined,
+    totalCount: sorted.length,
   };
 }
 
@@ -220,7 +245,8 @@ export async function getTournamentEligibilityForCatch(
 
     const sorted = sortEntriesByMetric(full, t.type, metricType);
     let rank = 1;
-    if (t.id === 'tournament-smallest') {
+    // Smallest-fish: smaller length = better rank (each smaller entry beats you)
+    if (t.type === 'SMALLEST_FISH') {
       for (const e of sorted) {
         const v = e.lengthIn ?? 999;
         if (v < myValue) rank++;
@@ -260,7 +286,9 @@ export async function enterTournament(
   options?: { logbookCatchId?: string; userState?: string }
 ): Promise<FishEntry> {
   const id = `entry-${Date.now()}-${userId}`;
-  return insertTournamentEntry(
+  const rawCatchId = options?.logbookCatchId ?? (fish.id?.startsWith('entry-') || fish.id?.startsWith('pending_') ? undefined : fish.id);
+  const catchId = rawCatchId && isValidUuid(rawCatchId) ? rawCatchId : undefined;
+  const result = await insertTournamentEntry(
     id,
     tournamentId,
     userId,
@@ -272,11 +300,13 @@ export async function enterTournament(
       lengthIn: fish.lengthIn,
     },
     {
-      catchId: options?.logbookCatchId ?? (fish.id?.startsWith('entry-') ? undefined : fish.id),
+      catchId,
       avatarUrl,
       userState: options?.userState,
     }
   );
+  recordTournamentEntryForDailyQuest(userId).catch(() => {});
+  return result;
 }
 
 /**

@@ -34,9 +34,11 @@ function computeRank(
   myEntry: FishEntry,
   allEntries: FishEntry[],
   metricType: MetricType,
-  tournamentId: string
+  tournamentId: string,
+  tournamentType?: string
 ): { rank: number; total: number; leaderValue: number | undefined } {
-  const smallestFirst = tournamentId === 'tournament-smallest';
+  // Smallest-fish: smallest inches win (ascending); else biggest wins
+  const smallestFirst = tournamentType === 'SMALLEST_FISH' || tournamentId === 'tournament-smallest';
   const myVal =
     metricType === 'WEIGHT_LBS'
       ? (myEntry.weightLbs ?? 0)
@@ -66,8 +68,8 @@ export default function ViewMyEntryScreen() {
     scope?: string;
   }>();
   const scope = (scopeParam === 'local' ? 'local' : 'global') as 'global' | 'local';
-  const userState = (mockUserProfile as { state?: string }).state;
   const { user } = useAuthContext();
+  const userState = user?.state ?? undefined;
   const currentUserId = user?.id ?? (mockUserProfile as { id?: string }).id ?? null;
 
   const { entry: myEntry, loading: entryLoading } = useMyTournamentEntry(
@@ -77,6 +79,7 @@ export default function ViewMyEntryScreen() {
   const [entries, setEntries] = useState<FishEntry[]>([]);
   const [tournamentTitle, setTournamentTitle] = useState('');
   const [metricType, setMetricType] = useState<MetricType>('LENGTH_IN');
+  const [tournamentType, setTournamentType] = useState<string>('');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
@@ -87,6 +90,7 @@ export default function ViewMyEntryScreen() {
         if (t) {
           setTournamentTitle(t.title);
           setMetricType(t.metricType ?? 'LENGTH_IN');
+          setTournamentType(t.type ?? '');
         }
       }
     );
@@ -104,8 +108,9 @@ export default function ViewMyEntryScreen() {
 
   const rankInfo =
     myEntry && entries.length > 0
-      ? computeRank(myEntry, entries, metricType, tournamentId ?? '')
+      ? computeRank(myEntry, entries, metricType, tournamentId ?? '', tournamentType)
       : null;
+  const smallestFirst = tournamentType === 'SMALLEST_FISH' || tournamentId === 'tournament-smallest';
   const gapToLeader =
     rankInfo &&
     rankInfo.rank > 1 &&
@@ -116,7 +121,7 @@ export default function ViewMyEntryScreen() {
             metricType === 'WEIGHT_LBS'
               ? (myEntry.weightLbs ?? 0)
               : (myEntry.lengthIn ?? 0);
-          const diff = rankInfo.leaderValue - myVal;
+          const diff = smallestFirst ? myVal - (rankInfo.leaderValue ?? 0) : (rankInfo.leaderValue ?? 0) - myVal;
           const unit = metricType === 'WEIGHT_LBS' ? ' lbs' : ' in';
           return diff > 0 ? `You are ${diff.toFixed(1)}${unit} behind` : null;
         })()
@@ -239,6 +244,13 @@ export default function ViewMyEntryScreen() {
           <Text style={styles.voteCounts}>
             👍 {myEntry.upVotes} · 👎 {myEntry.downVotes}
           </Text>
+        </View>
+
+        <View style={styles.votingRulesBox}>
+          <Text style={styles.votingRulesText}>
+            👍 Verify size · 👎 Down votes over 50% may be removed
+          </Text>
+          <Text style={styles.votingRulesWarning}>Obviously fake entries may be banned from tournaments.</Text>
         </View>
 
         {gapToLeader && (
@@ -386,6 +398,26 @@ const styles = StyleSheet.create({
   voteCounts: {
     fontSize: 13,
     color: colors.lightSubtext,
+  },
+  votingRulesBox: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    backgroundColor: 'rgba(74, 144, 226, 0.08)',
+    borderRadius: 10,
+  },
+  votingRulesText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.lightSubtext,
+  },
+  votingRulesWarning: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#c62828',
+    marginTop: 4,
   },
   gapText: {
     fontSize: 14,

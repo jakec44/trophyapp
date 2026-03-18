@@ -1,8 +1,7 @@
 /**
  * AI Fish Detection - Species, estimated weight, and length from photo
- * Uses fal.ai LLaVA vision model. Falls back to mock when no API key.
- *
- * Env: EXPO_PUBLIC_FAL_KEY (same as other fal.ai features)
+ * Uses fal.ai LLaVA vision model.
+ * When EXPO_PUBLIC_FAL_KEY is missing, throws — no mock in production.
  */
 
 import { Platform } from 'react-native';
@@ -46,15 +45,17 @@ async function imageToDataUri(uri: string): Promise<string> {
   return `data:image/jpeg;base64,${base64}`;
 }
 
+const FAL_KEY_REQUIRED_MSG = 'AI species detection is not available.';
+
 /**
  * Detect fish species, weight, and length from image using AI vision.
- * Returns mock data when EXPO_PUBLIC_FAL_KEY is not set.
+ * Throws when EXPO_PUBLIC_FAL_KEY is not set — feature is disabled, no mock.
  */
 export async function detectFishFromImage(imageUri: string): Promise<FishDetectionResult> {
-  const apiKey = process.env.EXPO_PUBLIC_FAL_KEY;
+  const apiKey = process.env.EXPO_PUBLIC_FAL_KEY?.trim();
 
   if (!apiKey) {
-    return getMockDetection();
+    throw new Error(FAL_KEY_REQUIRED_MSG);
   }
 
   try {
@@ -83,34 +84,21 @@ export async function detectFishFromImage(imageUri: string): Promise<FishDetecti
     const output = (data.output || '').trim();
 
     const jsonMatch = output.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as {
-        species?: string;
-        weightEstimate?: number;
-        lengthEstimate?: number;
-      };
-      return {
-        species: parsed.species || 'Unknown',
-        weightEstimate: typeof parsed.weightEstimate === 'number' ? parsed.weightEstimate : 0,
-        lengthEstimate: typeof parsed.lengthEstimate === 'number' ? parsed.lengthEstimate : 0,
-        confidence: 85,
-      };
+    if (!jsonMatch) {
+      throw new Error('Could not parse AI response');
     }
+    const parsed = JSON.parse(jsonMatch[0]) as {
+      species?: string;
+      weightEstimate?: number;
+      lengthEstimate?: number;
+    };
+    return {
+      species: parsed.species || 'Unknown',
+      weightEstimate: typeof parsed.weightEstimate === 'number' ? parsed.weightEstimate : 0,
+      lengthEstimate: typeof parsed.lengthEstimate === 'number' ? parsed.lengthEstimate : 0,
+      confidence: 85,
+    };
   } catch (e) {
-    console.warn('Fish detection failed, using mock:', e instanceof Error ? e.message : e);
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`AI species detection failed: ${msg}`);
   }
-
-  return getMockDetection();
-}
-
-/** Mock result when API is unavailable - varies so it feels natural */
-function getMockDetection(): FishDetectionResult {
-  const options: FishDetectionResult[] = [
-    { species: 'Largemouth Bass', weightEstimate: 4.2, lengthEstimate: 18 },
-    { species: 'Red Drum (Redfish)', weightEstimate: 6.5, lengthEstimate: 26 },
-    { species: 'Rainbow Trout', weightEstimate: 2.8, lengthEstimate: 16 },
-    { species: 'Snook', weightEstimate: 8.1, lengthEstimate: 32 },
-    { species: 'Northern Pike', weightEstimate: 5.5, lengthEstimate: 24 },
-  ];
-  return options[Math.floor(Math.random() * options.length)];
-}

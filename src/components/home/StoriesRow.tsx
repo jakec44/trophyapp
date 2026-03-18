@@ -11,13 +11,12 @@ import {
   Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { UserLink } from '@/src/components/profile/UserLink';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import type { StoryItem } from '@/utils/feedMockData';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const AVATAR_SIZE = 68;
 const STORY_RING_WIDTH = 3;
 /** Blue ring when user hasn't viewed this friend's story yet */
@@ -39,13 +38,6 @@ function getInitials(name: string): string {
 interface StoriesRowProps {
   stories: StoryItem[];
   onStoryViewed?: (userId: string) => void;
-}
-
-function formatTimeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-  return `${Math.floor(diff / 86400000)}d`;
 }
 
 export function StoriesRow({ stories, onStoryViewed }: StoriesRowProps) {
@@ -119,6 +111,7 @@ export function StoriesRow({ stories, onStoryViewed }: StoriesRowProps) {
         transparent
         animationType="fade"
         onRequestClose={() => setVisibleStory(null)}
+        statusBarTranslucent
       >
         <Pressable
           style={styles.modalOverlay}
@@ -130,61 +123,54 @@ export function StoriesRow({ stories, onStoryViewed }: StoriesRowProps) {
                 {isValidImageUri(visibleStory.catchPhotoUrl) ? (
                   <Image
                     source={{ uri: visibleStory.catchPhotoUrl }}
-                    style={styles.storyPhoto}
-                    resizeMode="contain"
+                    style={[styles.storyPhoto, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT }]}
+                    resizeMode="cover"
                   />
                 ) : (
-                  <View style={[styles.storyPhoto, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#111' }]}>
+                  <View style={[styles.storyPhoto, styles.storyPhotoPlaceholder, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT }]}>
                     <Ionicons name="image-outline" size={48} color="#555" />
                   </View>
                 )}
-                <View style={styles.storyOverlay}>
-                  <View style={styles.storyHeader}>
-                    <UserLink
-                      userId={visibleStory.userId}
-                      username={visibleStory.username}
-                      onPressOverride={() => goToProfile(visibleStory.userId)}
-                      variant="avatar-only"
-                      avatarSize={40}
-                    >
-                      <View
-                        style={[
-                          styles.storyAvatar,
-                          styles.storyAvatarInitials,
-                          { backgroundColor: getColorForKey(visibleStory.userId) },
-                        ]}
-                      >
-                        <Text style={styles.storyAvatarInitialsText}>
-                          {getInitials(visibleStory.username)}
-                        </Text>
-                      </View>
-                    </UserLink>
-                    <View style={styles.storyMeta}>
-                      <UserLink
-                        userId={visibleStory.userId}
-                        username={visibleStory.username}
-                        onPressOverride={() => goToProfile(visibleStory.userId)}
-                        variant="text-only"
-                        textStyle={styles.storyUsername}
-                      />
-                      {(visibleStory.species || visibleStory.weight) ? (
-                        <Text style={styles.storySpecs}>
-                          {visibleStory.species} · {visibleStory.weight.toFixed(1)} lbs
-                        </Text>
-                      ) : (
-                        <Text style={styles.storySpecs}>Story</Text>
-                      )}
-                    </View>
-                    <Text style={styles.storyTime}>
-                      {formatTimeAgo(visibleStory.postedAt)}
-                    </Text>
+                <View style={styles.storyOverlay} pointerEvents="box-none">
+                  {/* Top center: profile pic + username */}
+                  <View style={styles.storyTopCenter}>
                     <TouchableOpacity
-                      onPress={() => setVisibleStory(null)}
-                      hitSlop={12}
+                      onPress={() => goToProfile(visibleStory.userId)}
+                      style={styles.storyTopCenterTouch}
+                      activeOpacity={0.9}
                     >
-                      <Ionicons name="close" size={28} color="#FFF" />
+                      {visibleStory.avatar && isValidImageUri(visibleStory.avatar) ? (
+                        <Image
+                          source={{ uri: visibleStory.avatar }}
+                          style={styles.storyTopAvatar}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View
+                          style={[
+                            styles.storyTopAvatar,
+                            styles.storyTopAvatarInitials,
+                            { backgroundColor: getColorForKey(visibleStory.userId) },
+                          ]}
+                        >
+                          <Text style={styles.storyTopInitials}>
+                            {getInitials(visibleStory.username)}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.storyTopUsername} numberOfLines={1}>
+                        {visibleStory.username}
+                      </Text>
                     </TouchableOpacity>
                   </View>
+                  {/* Close top-right */}
+                  <TouchableOpacity
+                    style={styles.storyCloseBtn}
+                    onPress={() => setVisibleStory(null)}
+                    hitSlop={12}
+                  >
+                    <Ionicons name="close" size={28} color="#FFF" />
+                  </TouchableOpacity>
                 </View>
               </>
             )}
@@ -252,12 +238,16 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     flex: 1,
-    justifyContent: 'center',
   },
   storyPhoto: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH,
-    alignSelf: 'center',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  storyPhotoPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#111',
   },
   storyOverlay: {
     position: 'absolute',
@@ -268,44 +258,42 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingHorizontal: 16,
   },
-  storyHeader: {
-    flexDirection: 'row',
+  storyTopCenter: {
+    position: 'absolute',
+    top: 56,
+    left: 0,
+    right: 0,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  storyAvatarTouchable: {
-    marginRight: 12,
+  storyTopCenterTouch: {
+    alignItems: 'center',
+    maxWidth: '70%',
   },
-  storyAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  storyTopAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginBottom: 6,
   },
-  storyAvatarInitials: {
+  storyTopAvatarInitials: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  storyAvatarInitialsText: {
-    fontSize: 14,
+  storyTopInitials: {
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  storyMeta: {
-    flex: 1,
-    minWidth: 0,
-  },
-  storyUsername: {
-    fontSize: 16,
+  storyTopUsername: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFF',
+    textAlign: 'center',
   },
-  storySpecs: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-  },
-  storyTime: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-    marginLeft: 8,
+  storyCloseBtn: {
+    position: 'absolute',
+    top: 56,
+    right: 16,
   },
 });

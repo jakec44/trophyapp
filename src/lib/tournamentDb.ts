@@ -4,6 +4,7 @@
  */
 
 import { getProfileDisplayName, supabase } from './supabase';
+import { getLevelFromXp } from '@/src/types/gamification';
 import type { FishEntry, UserVote } from '@/src/types/tournaments';
 
 export interface TournamentRow {
@@ -12,12 +13,19 @@ export interface TournamentRow {
   title: string;
   metric_type: string;
   ends_at: string | null;
+  cycle_id: number;
+  cycle_starts_at: string;
+  cycle_ends_at: string;
+  duration_minutes: number;
+  template_key: string | null;
+  is_active: boolean;
 }
 
 export interface TournamentEntryRow {
   id: string;
   tournament_id: string;
   user_id: string;
+  cycle_id: number;
   catch_id: string | null;
   username: string;
   avatar_url: string | null;
@@ -29,7 +37,7 @@ export interface TournamentEntryRow {
   down_votes: number;
   user_state: string | null;
   created_at: string;
-  profiles?: { name?: string | null; display_name: string | null; username?: string | null; subscription_plan?: string | null; pro_expires_at?: string | null } | null;
+  profiles?: { name?: string | null; display_name: string | null; username?: string | null; subscription_plan?: string | null; pro_expires_at?: string | null; total_xp?: number | null; angler_rating?: number | null } | null;
 }
 
 function isPro(p: { subscription_plan?: string | null; pro_expires_at?: string | null } | null): boolean {
@@ -39,6 +47,7 @@ function isPro(p: { subscription_plan?: string | null; pro_expires_at?: string |
 }
 
 function rowToFishEntry(row: TournamentEntryRow, userVote: UserVote = null): FishEntry {
+  const xp = row.profiles?.total_xp;
   return {
     id: row.id,
     tournamentId: row.tournament_id,
@@ -46,6 +55,8 @@ function rowToFishEntry(row: TournamentEntryRow, userVote: UserVote = null): Fis
     username: row.username,
     displayName: getProfileDisplayName(row.profiles),
     proVerified: isPro(row.profiles),
+    authorLevel: typeof xp === 'number' ? getLevelFromXp(xp).level : undefined,
+    authorAnglerRating: row.profiles?.angler_rating ?? undefined,
     imageUrl: row.image_url,
     avatarUrl: row.avatar_url ?? undefined,
     species: row.species ?? undefined,
@@ -58,27 +69,47 @@ function rowToFishEntry(row: TournamentEntryRow, userVote: UserVote = null): Fis
   };
 }
 
-/** Fetch all tournament definitions */
+/** Fetch all tournament definitions. Ordered by cycle_ends_at asc for consistent countdown. */
 export async function getTournaments(): Promise<TournamentRow[]> {
   const { data, error } = await supabase
     .from('tournaments')
-    .select('id, type, title, metric_type, ends_at')
-    .order('id');
+    .select('id, type, title, metric_type, ends_at, cycle_id, cycle_starts_at, cycle_ends_at, duration_minutes, template_key, is_active')
+    .eq('is_active', true)
+    .order('cycle_ends_at', { ascending: true });
   if (error) throw error;
   return (data ?? []) as TournamentRow[];
 }
 
-/** Fetch entries for a tournament, optionally filtered by user_state for local scope */
+/** Fetch a single tournament by id (one query). Use for detail screen so countdown loads fast. */
+export async function getTournamentById(tournamentId: string): Promise<TournamentRow | null> {
+  const { data, error } = await supabase
+    .from('tournaments')
+    .select('id, type, title, metric_type, ends_at, cycle_id, cycle_starts_at, cycle_ends_at, duration_minutes, template_key, is_active')
+    .eq('id', tournamentId)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) throw error;
+  return data as TournamentRow | null;
+}
+
+/** Fetch entries for a tournament (current cycle only), optionally filtered by user_state for local scope */
 export async function getTournamentEntries(
   tournamentId: string,
   currentUserId: string | null,
   scope: 'global' | 'local',
-  userState?: string
+  userState?: string,
+  cycleId?: number
 ): Promise<FishEntry[]> {
+  let cycle = cycleId;
+  if (cycle === undefined) {
+    const { data: tRows } = await supabase.from('tournaments').select('cycle_id').eq('id', tournamentId).limit(1);
+    cycle = (tRows?.[0] as { cycle_id: number } | undefined)?.cycle_id ?? 1;
+  }
   let query = supabase
     .from('tournament_entries')
-    .select('*, profiles!tournament_entries_user_id_fkey(display_name, username, subscription_plan, pro_expires_at)')
+    .select('*, profiles!tournament_entries_user_id_fkey(display_name, username, subscription_plan, pro_expires_at, total_xp, angler_rating)')
     .eq('tournament_id', tournamentId)
+    .eq('cycle_id', cycle)
     .order('created_at', { ascending: false });
 
   if (scope === 'local' && userState) {
@@ -88,26 +119,35 @@ export async function getTournamentEntries(
   const { data: rows, error } = await query;
   if (error) throw error;
 
-  const entries: FishEntry[] = [];
-  for (const row of (rows ?? []) as TournamentEntryRow[]) {
-    let userVote: UserVote = null;
-    if (currentUserId) {
-      const { data: voteRow } = await supabase
-        .from('tournament_entry_votes')
-        .select('vote')
-        .eq('entry_id', row.id)
-        .eq('user_id', currentUserId)
-        .maybeSingle();
-      if (voteRow && (voteRow.vote === 'UP' || voteRow.vote === 'DOWN')) {
-        userVote = voteRow.vote;
-      }
+  const rowList = (rows ?? []) as TournamentEntryRow[];
+  let voteByEntryId: Record<string, 'UP' | 'DOWN'> = {};
+  if (currentUserId && rowList.length > 0) {
+    const entryIds = rowList.map((r) => r.id);
+    const { data: voteRows } = await supabase
+      .from('tournament_entry_votes')
+      .select('entry_id, vote')
+      .eq('user_id', currentUserId)
+      .in('entry_id', entryIds);
+    if (voteRows?.length) {
+      voteByEntryId = (voteRows as { entry_id: string; vote: string }[]).reduce(
+        (acc, r) => {
+          if (r.vote === 'UP' || r.vote === 'DOWN') acc[r.entry_id] = r.vote;
+          return acc;
+        },
+        {} as Record<string, 'UP' | 'DOWN'>
+      );
     }
+  }
+
+  const entries: FishEntry[] = [];
+  for (const row of rowList) {
+    const userVote: UserVote = voteByEntryId[row.id] ?? null;
     entries.push(rowToFishEntry(row, userVote));
   }
   return entries;
 }
 
-/** Enter a tournament. Replaces any existing entry for this user in this tournament. */
+/** Enter a tournament. RPC replaces any existing entry for this user in the current cycle. */
 export async function insertTournamentEntry(
   id: string,
   tournamentId: string,
@@ -121,13 +161,6 @@ export async function insertTournamentEntry(
   },
   options?: { catchId?: string; avatarUrl?: string; userState?: string }
 ): Promise<FishEntry> {
-  // Delete existing entry for this user in this tournament (replace flow)
-  await supabase
-    .from('tournament_entries')
-    .delete()
-    .eq('tournament_id', tournamentId)
-    .eq('user_id', userId);
-
   const { data, error } = await supabase.rpc('create_tournament_entry', {
     p_id: id,
     p_tournament_id: tournamentId,
@@ -168,13 +201,16 @@ export async function voteOnTournamentEntry(
   };
 }
 
-/** Delete a user's entry from a tournament by tournament+user (for withdraw flow) */
+/** Delete the current user's entry in the current cycle (for withdraw flow). */
 export async function deleteTournamentEntryByUser(tournamentId: string, userId: string): Promise<void> {
+  const { data: tRow } = await supabase.from('tournaments').select('cycle_id').eq('id', tournamentId).limit(1).maybeSingle();
+  const cycleId = (tRow as { cycle_id: number } | null)?.cycle_id ?? 1;
   const { data, error } = await supabase
     .from('tournament_entries')
     .select('id')
     .eq('tournament_id', tournamentId)
     .eq('user_id', userId)
+    .eq('cycle_id', cycleId)
     .maybeSingle();
 
   if (error) throw error;
@@ -198,17 +234,26 @@ export async function deleteTournamentEntry(entryId: string, userId: string): Pr
   await supabase.from('tournament_entries').delete().eq('id', entryId);
 }
 
-/** Get current user's entry in a tournament */
+/** Delete any tournament entry by id. Allowed only for entry owner or moderator (RLS). Use for moderator remove-entry. */
+export async function deleteTournamentEntryByEntryId(entryId: string): Promise<void> {
+  const { error } = await supabase.from('tournament_entries').delete().eq('id', entryId);
+  if (error) throw error;
+}
+
+/** Get current user's entry in a tournament (current cycle only). */
 export async function getMyTournamentEntry(
   tournamentId: string,
   userId: string | null
 ): Promise<FishEntry | null> {
   if (!userId) return null;
+  const { data: tRow } = await supabase.from('tournaments').select('cycle_id').eq('id', tournamentId).limit(1).maybeSingle();
+  const cycleId = (tRow as { cycle_id: number } | null)?.cycle_id ?? 1;
   const { data, error } = await supabase
     .from('tournament_entries')
     .select('*')
     .eq('tournament_id', tournamentId)
     .eq('user_id', userId)
+    .eq('cycle_id', cycleId)
     .maybeSingle();
 
   if (error) throw error;
@@ -216,29 +261,37 @@ export async function getMyTournamentEntry(
   return rowToFishEntry(data as TournamentEntryRow);
 }
 
-/** Check if user has an entry in a tournament */
+/** Check if user has an entry in a tournament (current cycle only). */
 export async function isUserEnteredInTournament(
   tournamentId: string,
   userId: string
 ): Promise<boolean> {
+  const { data: tRow } = await supabase.from('tournaments').select('cycle_id').eq('id', tournamentId).limit(1).maybeSingle();
+  const cycleId = (tRow as { cycle_id: number } | null)?.cycle_id ?? 1;
   const { data, error } = await supabase
     .from('tournament_entries')
     .select('id')
     .eq('tournament_id', tournamentId)
     .eq('user_id', userId)
+    .eq('cycle_id', cycleId)
     .limit(1);
 
   if (error) return false;
   return (data ?? []).length > 0;
 }
 
-/** Count how many tournaments the user is entered in (for free-tier limit) */
+/** Count how many tournaments the user is entered in for the current cycle (for free-tier limit). */
 export async function countUserTournamentEntries(userId: string): Promise<number> {
-  const { count, error } = await supabase
+  const { data: entries, error: eErr } = await supabase
     .from('tournament_entries')
-    .select('*', { count: 'exact', head: true })
+    .select('tournament_id, cycle_id')
     .eq('user_id', userId);
-
-  if (error) return 0;
-  return count ?? 0;
+  if (eErr || !entries?.length) return 0;
+  const { data: tournaments } = await supabase.from('tournaments').select('id, cycle_id');
+  const currentSet = new Set((tournaments ?? []).map((t: { id: string; cycle_id: number }) => `${t.id}:${t.cycle_id}`));
+  let count = 0;
+  for (const e of entries as { tournament_id: string; cycle_id: number }[]) {
+    if (currentSet.has(`${e.tournament_id}:${e.cycle_id}`)) count++;
+  }
+  return count;
 }

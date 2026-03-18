@@ -59,7 +59,8 @@ export default function PhotoPickerScreen() {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
+        allowsEditing: true,
+        aspect: [9, 16],
         quality: 0.9,
         selectionLimit: 1,
         base64: true,
@@ -126,6 +127,7 @@ export default function PhotoPickerScreen() {
               <Feather name="image" size={64} color={GOLD} />
             </View>
             <Text style={styles.heading}>Access Photo Library</Text>
+            <Text style={styles.aiComingSoon}>AI identifier coming soon</Text>
             <Text style={styles.desc}>
               {Platform.OS === 'web'
                 ? 'Choose an image from your computer. For Apple Photos on your iPhone, use the Snagged app on your phone.'
@@ -206,6 +208,13 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: colors.lightText,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  aiComingSoon: {
+    fontSize: 13,
+    color: colors.lightSubtext,
+    fontStyle: 'italic',
     textAlign: 'center',
     marginBottom: 12,
   },

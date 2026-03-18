@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,16 +9,19 @@ import {
   ActivityIndicator,
   Animated,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/utils/colors';
 import { useAuthContext } from '@/src/context/AuthContext';
+import { useOnboardingOverlay } from '@/src/context/OnboardingOverlayContext';
 import { useHomeTournaments } from '@/src/hooks/useHomeTournaments';
 import { StoriesRow } from '@/src/components/home/StoriesRow';
 import { FeedPostCard } from '@/src/components/home/FeedPostCard';
-import { TournamentBanner } from '@/src/components/home/TournamentBanner';
+import { DailyQuestsCard } from '@/src/components/home/DailyQuestsCard';
+import { useDailyQuests } from '@/src/hooks/useDailyQuests';
 import { CreatePostModal } from '@/src/components/home/CreatePostModal';
 import { useFriendStories } from '@/src/hooks/useFriendStories';
 import type { FeedComment } from '@/utils/feedMockData';
@@ -30,6 +33,10 @@ import { Ionicons } from '@expo/vector-icons';
 import Feather from '@expo/vector-icons/Feather';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
 import { PASSPORT_SPECIES } from '@/utils/gamificationData';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const ONBOARDING_HAS_SEEN = 'hasSeenOnboarding';
+const ONBOARDING_HOME_DISMISSED = 'hasDismissedHomeOverlay';
 
 function StatsBar() {
   const { levelInfo, caughtSpecies } = useGamificationContext();
@@ -156,37 +163,167 @@ const   logButtonStyles = StyleSheet.create({
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { postId: highlightPostId } = useLocalSearchParams<{ postId?: string }>();
   const { user } = useAuthContext();
   const bottomPadding = useBottomSafePadding();
   const [createPostVisible, setCreatePostVisible] = useState(false);
+  const [showOnboardingOverlay, setShowOnboardingOverlay] = useState<boolean | null>(null);
+  const arrowAnim = useRef(new Animated.Value(0)).current;
+  const { setHideTabBar } = useOnboardingOverlay();
+
+  useEffect(() => {
+    setHideTabBar(showOnboardingOverlay === true);
+    return () => setHideTabBar(false);
+  }, [showOnboardingOverlay, setHideTabBar]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const [seen, dismissed] = await Promise.all([
+            AsyncStorage.getItem(ONBOARDING_HAS_SEEN),
+            AsyncStorage.getItem(ONBOARDING_HOME_DISMISSED),
+          ]);
+          if (!cancelled) {
+            setShowOnboardingOverlay(seen !== '1' && dismissed !== '1');
+          }
+        } catch {
+          if (!cancelled) setShowOnboardingOverlay(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }, [])
+  );
+
+  useEffect(() => {
+    if (!showOnboardingOverlay) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(arrowAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.timing(arrowAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [showOnboardingOverlay, arrowAnim]);
+
+  const handleOnboardingLogPress = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(ONBOARDING_HOME_DISMISSED, '1');
+      setShowOnboardingOverlay(false);
+      router.push('/camera');
+    } catch {
+      setShowOnboardingOverlay(false);
+      router.push('/camera');
+    }
+  }, [router]);
+
   const {
-    tournaments,
     refreshing,
     voteLoading,
-    couldPlace,
     handleRefresh,
     handleVote,
   } = useHomeTournaments('global', user?.id);
 
-  const { feedPosts, refreshFeed, handlePostHype, handleAddComment } = useFeedContext();
+  const { feedPosts, refreshFeed, handlePostHype, handleAddComment, handleShare, loadComments, handleDeletePost } = useFeedContext();
   const { stories: friendStories, refresh: refreshStories, markAsSeen: markStorySeen } = useFriendStories();
+  const { claimableCount, countdown: questCountdown, refresh: refreshDailyQuests } = useDailyQuests();
 
+  const [isScreenFocused, setIsScreenFocused] = useState(true);
   useFocusEffect(
     useCallback(() => {
+      setIsScreenFocused(true);
       refreshStories();
       refreshFeed();
-    }, [refreshStories, refreshFeed])
+      refreshDailyQuests();
+      return () => setIsScreenFocused(false);
+    }, [refreshStories, refreshFeed, refreshDailyQuests])
   );
 
-  // Soonest-ending active tournament for the live banner
-  const soonestTournament = tournaments
-    .filter((t) => t.endsAt && new Date(t.endsAt).getTime() > Date.now())
-    .sort((a, b) => new Date(a.endsAt!).getTime() - new Date(b.endsAt!).getTime())[0] ?? null;
-
-  const launchCamera = () => router.push('/camera');
-  const launchPhotoLibrary = () => router.push('/photo-picker');
-  const handleVoteGated = (entryId: string, vote: 'UP' | 'DOWN' | null) =>
+  const launchCamera = () => {
+    if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+    router.push('/camera');
+  };
+  const launchPhotoLibrary = () => {
+    if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+    router.push('/photo-picker');
+  };
+  const handleVoteGated = (entryId: string, vote: 'UP' | 'DOWN' | null) => {
+    if (!user?.id) { router.replace('/(tabs)/profile'); return; }
     handleVote(entryId, vote);
+  };
+
+  const [showStatsBar, setShowStatsBar] = useState(true);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const feedSectionYRef = useRef(0);
+  const cardLayoutsRef = useRef<Record<string, { y: number; height: number }>>({});
+  const [cardLayouts, setCardLayouts] = useState<Record<string, { y: number; height: number }>>({});
+  const pendingScrollPostIdRef = useRef<string | null>(null);
+  const scrolledToHighlightRef = useRef<string | null>(null);
+
+  // When opened from chat shared post: scroll feed to that post
+  useEffect(() => {
+    if (!highlightPostId) {
+      scrolledToHighlightRef.current = null;
+      return;
+    }
+    if (!scrollViewRef.current || scrolledToHighlightRef.current === highlightPostId) return;
+    const layout = cardLayoutsRef.current[highlightPostId];
+    if (!layout?.height) return;
+    scrolledToHighlightRef.current = highlightPostId;
+    const targetY = Math.max(0, feedSectionYRef.current + layout.y - 24);
+    scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+  }, [highlightPostId, cardLayouts]);
+
+  const scrollToShowCommentInput = useCallback((postId: string) => {
+    pendingScrollPostIdRef.current = postId;
+  }, []);
+
+  const flushScrollToComment = useCallback((postId: string, cardY: number, cardHeight: number) => {
+    if (pendingScrollPostIdRef.current !== postId || !scrollViewRef.current) return;
+    const { height: windowHeight } = Dimensions.get('window');
+    const targetY = Math.max(0, feedSectionYRef.current + cardY + cardHeight - windowHeight + 220);
+    scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+    pendingScrollPostIdRef.current = null;
+  }, []);
+
+  const [scrollState, setScrollState] = useState({ y: 0, viewportHeight: Dimensions.get('window').height });
+
+  const focusedVideoPostId = useMemo(() => {
+    const scrollY = scrollState.y;
+    const vh = scrollState.viewportHeight;
+    const feedY = feedSectionYRef.current;
+    const layouts = cardLayouts;
+    let bestId: string | null = null;
+    let bestFraction = 0.5;
+    for (const post of feedPosts) {
+      const layout = layouts[post.id];
+      if (!layout || layout.height <= 0) continue;
+      const cardTop = feedY + layout.y;
+      const cardBottom = cardTop + layout.height;
+      const visTop = Math.max(cardTop, scrollY);
+      const visBottom = Math.min(cardBottom, scrollY + vh);
+      const visHeight = Math.max(0, visBottom - visTop);
+      const fraction = visHeight / layout.height;
+      if (fraction >= 0.5 && fraction > bestFraction) {
+        bestFraction = fraction;
+        bestId = post.id;
+      }
+    }
+    return bestId;
+  }, [scrollState.y, scrollState.viewportHeight, feedPosts, cardLayouts]);
+
+  const onScroll = useCallback(
+    ({ nativeEvent }: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) => {
+      const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+      setScrollState({ y: contentOffset.y, viewportHeight: layoutMeasurement.height });
+      const scrollBottom = contentOffset.y + layoutMeasurement.height;
+      const nearBottom = scrollBottom >= contentSize.height - 80;
+      setShowStatsBar((prev) => (nearBottom ? false : true));
+    },
+    []
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -196,7 +333,7 @@ export default function HomeScreen() {
           <SnaggedWordmark />
           <TouchableOpacity
             style={styles.postBtn}
-            onPress={() => setCreatePostVisible(true)}
+            onPress={() => { if (!user?.id) router.replace('/(tabs)/profile'); else setCreatePostVisible(true); }}
             hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
           >
             <Text style={styles.postBtnPlus}>+</Text>
@@ -213,17 +350,10 @@ export default function HomeScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerIcon}
-            onPress={() => router.push('/(tabs)/messages')}
+            onPress={() => { if (!user?.id) router.replace('/(tabs)/profile'); else router.push('/(tabs)/messages'); }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <View style={styles.headerIconWrap}>
-              <Ionicons name="chatbubble-outline" size={22} color={colors.lightText} />
-              {couldPlace && (
-                <View style={styles.headerBadge}>
-                  <Text style={styles.headerBadgeText}>1</Text>
-                </View>
-              )}
-            </View>
+            <Ionicons name="chatbubble-outline" size={22} color={colors.lightText} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerIcon}
@@ -236,9 +366,12 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView
+        ref={scrollViewRef}
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
         showsVerticalScrollIndicator={false}
+        onScroll={onScroll}
+        scrollEventThrottle={100}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -250,8 +383,8 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Tournament banner — pinned to top of feed */}
-        {soonestTournament && <TournamentBanner tournament={soonestTournament} />}
+        {/* Daily Quests — replaces Ending Soon */}
+        <DailyQuestsCard claimableCount={claimableCount} countdown={questCountdown} />
 
         {/* Stories row — Friends only */}
         {friendStories.length > 0 && (
@@ -261,9 +394,11 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* 4. Social catch feed — Recent entries */}
-        <View style={styles.feedSection}>
-          <Text style={styles.sectionLabel}>Recent Entries</Text>
+        {/* Feed */}
+        <View
+          style={styles.feedSection}
+          onLayout={(e) => { feedSectionYRef.current = e.nativeEvent.layout.y; }}
+        >
           {feedPosts.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>Start your first log</Text>
@@ -281,18 +416,43 @@ export default function HomeScreen() {
             </View>
           ) : (
             feedPosts.map((post) => (
-              <FeedPostCard
+              <View
                 key={post.id}
-                post={post}
-                onHype={handlePostHype}
-                onAddComment={handleAddComment}
-              />
+                onLayout={(e) => {
+                  const { y, height } = e.nativeEvent.layout;
+                  cardLayoutsRef.current[post.id] = { y, height };
+                  setCardLayouts((prev) => ({ ...prev, [post.id]: { y, height } }));
+                  flushScrollToComment(post.id, y, height);
+                }}
+              >
+                <FeedPostCard
+                  post={post}
+                  isScreenFocused={isScreenFocused}
+                  shouldPlayVideo={post.id === focusedVideoPostId}
+                  onHype={(postId, hyped) => {
+                    if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+                    handlePostHype(postId, hyped);
+                  }}
+                  onAddComment={(postId, text, replyMeta) => {
+                    if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+                    handleAddComment(postId, text, replyMeta);
+                  }}
+                  onShare={(postId) => {
+                    if (!user?.id) { router.replace('/(tabs)/profile'); return; }
+                    handleShare(postId);
+                  }}
+                  loadComments={loadComments}
+                  onScrollToShowComments={scrollToShowCommentInput}
+                  canDelete={user?.id === post.userId || user?.isModerator === true}
+                  onDelete={handleDeletePost}
+                />
+              </View>
             ))
           )}
         </View>
 
-        {/* 4. Stats bar */}
-        <StatsBar />
+        {/* 4. Stats bar — hidden when scrolled to bottom */}
+        {showStatsBar && <StatsBar />}
 
         {/* 5. Log a Catch button */}
         <PulsingLogButton onPress={launchCamera} />
@@ -307,6 +467,42 @@ export default function HomeScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* First-time onboarding overlay: dark overlay, avatar, text, arrow; only proceed by tapping Log */}
+      {showOnboardingOverlay === true && (
+        <View style={[StyleSheet.absoluteFill, styles.onboardingOverlay]} pointerEvents="box-none">
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => {}} />
+          <View style={styles.onboardingContent} pointerEvents="none">
+            <View style={styles.onboardingAvatarBubble}>
+              <Text style={styles.onboardingAvatarEmoji}>🎣</Text>
+            </View>
+            <Text style={styles.onboardingText}>Let's get you started. Log your first fish.</Text>
+            <Animated.View
+              style={[
+                styles.onboardingArrowWrap,
+                {
+                  opacity: arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
+                  transform: [
+                    { translateY: arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }) },
+                  ],
+                },
+              ]}
+            >
+              <Ionicons name="chevron-down" size={32} color="#fff" />
+            </Animated.View>
+          </View>
+          <View style={styles.onboardingLogButtonWrap} pointerEvents="box-none">
+            <TouchableOpacity
+              style={styles.onboardingLogButton}
+              onPress={handleOnboardingLogPress}
+              activeOpacity={0.9}
+            >
+              <Feather name="camera" size={26} color="#FFFFFF" />
+              <Text style={styles.onboardingLogButtonText}>Log a Catch</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <CreatePostModal
         visible={createPostVisible}
@@ -326,7 +522,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingTop: 4,
+    paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: colors.lightBorder,
   },
@@ -408,7 +605,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   crewSection: {
-    marginBottom: 8,
+    marginBottom: 0,
   },
   feedSection: {
     paddingHorizontal: 0,
@@ -482,5 +679,75 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 24,
+  },
+  onboardingOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+    zIndex: 1000,
+  },
+  onboardingBlocker: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
+  onboardingContent: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 140,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  onboardingAvatarBubble: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(0,229,200,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  onboardingAvatarEmoji: {
+    fontSize: 32,
+  },
+  onboardingText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  onboardingArrowWrap: {
+    marginBottom: 8,
+  },
+  onboardingLogButtonWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 100,
+  },
+  onboardingLogButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: colors.brightBlue,
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginHorizontal: 0,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0066FF',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  onboardingLogButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

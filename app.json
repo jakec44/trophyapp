@@ -7,7 +7,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/loading-trophy.png",
       "resizeMode": "contain",
@@ -44,6 +43,15 @@
       "expo-splash-screen",
       "expo-router",
       "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#00e5c8",
+          "sounds": [],
+          "mode": "production"
+        }
+      ],
       [
         "expo-image-picker",
         {

@@ -109,7 +109,7 @@ export default function MessagesScreen() {
           <SnaggedWordmark />
         </View>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Messages</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>Messages</Text>
           {totalUnread > 0 && (
             <View style={styles.headerBadge}>
               <Text style={styles.headerBadgeText}>{totalUnread > 99 ? '99+' : totalUnread}</Text>
@@ -195,7 +195,7 @@ export default function MessagesScreen() {
                   style={[styles.row, dm.unreadCount > 0 && styles.rowUnread]}
                   activeOpacity={0.75}
                   onPress={() =>
-                    router.push(`/chat/${dm.otherUserId}?displayName=${encodeURIComponent(dm.otherUsername)}`)
+                    router.push(`/chat/${dm.otherUserId}?displayName=${encodeURIComponent(dm.otherUsername)}&avatarUrl=${encodeURIComponent(dm.otherAvatarUrl || '')}`)
                   }
                 >
                   <Avatar uri={dm.otherAvatarUrl || undefined} name={dm.otherUsername} />
@@ -244,8 +244,20 @@ const styles = StyleSheet.create({
     padding: 4,
     marginRight: 8,
   },
-  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { fontSize: 20, fontWeight: '800', color: colors.lightText },
+  headerCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'nowrap',
+    minWidth: 0,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.lightText,
+    flexShrink: 0,
+  },
   headerBadge: {
     minWidth: 20, height: 20, borderRadius: 10,
     backgroundColor: '#DC2626', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5,

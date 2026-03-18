@@ -15,6 +15,7 @@ import { colors } from '@/utils/colors';
 import type { FishEntry } from '@/src/types/tournaments';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
 import { LeaderboardRow } from './LeaderboardRow';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 
 interface LiveCompetitionBannerProps {
   title: string;
@@ -36,6 +37,7 @@ export function LiveCompetitionBanner({
   voteLoading,
 }: LiveCompetitionBannerProps) {
   const router = useRouter();
+  const winCheck = useTournamentWinCheckContext();
   const [expanded, setExpanded] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -72,7 +74,11 @@ export function LiveCompetitionBanner({
           {title}
         </Text>
         <View style={styles.countdownWrap}>
-          <TournamentCountdown endsAt={endsAt} compact />
+          <TournamentCountdown
+            endsAt={endsAt}
+            compact
+            onEnded={winCheck?.triggerCheck}
+          />
         </View>
         <Text style={styles.entrants}>{entrantsCount} competing</Text>
         <Ionicons name="chevron-forward" size={16} color={colors.lightSubtext} />

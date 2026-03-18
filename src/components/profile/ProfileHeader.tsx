@@ -13,6 +13,7 @@ import {
   Image,
   Alert,
   Platform,
+  ScrollView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,14 @@ import { useRouter } from 'expo-router';
 import { colors } from '@/utils/colors';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import { CARD_RADIUS_LG, cardShadowLight } from '@/src/constants/styles';
+import type { ProfileDisplayItem } from '@/src/lib/supabase';
+import { getInferredPlaceFromBadge } from '@/src/lib/supabase';
+import { getLevelBadgeIcon } from '@/src/types/gamification';
+import { SpeciesBadgeImage } from '@/src/components/profile/SpeciesBadgeImage';
+import { hasCustomSpeciesBadgeImage } from '@/src/constants/speciesBadgeImages';
+import { PLACE_PALETTE } from '@/src/types/tournamentResults';
+import { AnimatedTrophyBadge } from '@/src/components/profile/AnimatedTrophyBadge';
+import { RarityBadge } from '@/src/components/profile/RarityBadge';
 
 export interface EarnedBadgeItem {
   id: string;
@@ -29,10 +38,12 @@ export interface EarnedBadgeItem {
   icon: string;
 }
 
+const TEAL = colors.teal;
 const ACCENT_BLUE = colors.brightBlue;
-/** Blue ring when user hasn't viewed the story yet (clear, classic blue) */
-const RING_UNVIEWED_BLUE = '#3B82F6';
+/** Blue for friends / unviewed story ring */
+const FRIENDS_BLUE = colors.brightBlue;
 const GOLD = colors.gold;
+const SPECIES_GREEN = colors.green;
 const BANNER_HEIGHT = 200;
 const BANNER_RADIUS = 16;
 const SCREEN_PADDING = 16;
@@ -43,13 +54,22 @@ interface ProfileHeaderProps {
   onBannerChange?: (uri: string) => void;
   avatarUri: string;
   username: string;
-  globalRank?: number;
+  /** Angler Rating (tournament-based competitive rank) */
+  anglerRating?: number;
+  /** 1-based global rank by AR. Omit to hide. */
+  arRank?: number | null;
+  /** 1-based local/regional rank. Placeholder shown if omitted. */
+  localRank?: number | null;
   level?: number;
+  /** Level title (e.g. "Angler", "Trophy Chaser") */
+  levelTitle?: string;
   /** XP earned within the current level */
   xpInLevel?: number;
   /** XP required to reach the next level */
   xpForNext?: number;
   location?: string;
+  /** Bio — shown below location (e.g. state like SC) in the same block */
+  bio?: string;
   /** Stats: Catches, Species, Wins, Friends — tappable */
   catches?: number;
   species?: number;
@@ -73,12 +93,26 @@ interface ProfileHeaderProps {
   onOpenStoryViewer?: (index?: number) => void;
   /** Earned badges (level + tournament). Shown floating above level/XP when present. */
   earnedBadges?: EarnedBadgeItem[];
-  /** IDs of badges to display (max 5). */
+  /** IDs of badges to display (max 3). */
   displayedBadgeIds?: string[];
   /** Called when user taps "Badges" / pencil to edit which are on display. */
   onEditBadges?: () => void;
+  /** Called when user taps a displayed badge pill to see how it was earned. */
+  onBadgePress?: (badge: EarnedBadgeItem) => void;
+  /** Dynamic display items (badges + trophies) for "Trophies & Badges" row. When set, used instead of earnedBadges/displayedBadgeIds. */
+  displayItems?: ProfileDisplayItem[];
+  /** Called when user taps a display item (badge -> show how earned; trophy -> open detail modal). */
+  onDisplayItemPress?: (item: ProfileDisplayItem) => void;
   /** Show blue Pro verified check next to username */
   proVerified?: boolean;
+  /** Prestige level (0–3). Shown as "P1" etc next to level. */
+  prestige?: number;
+  /** Called when level card is tapped. Use to open prestige modal when eligible (level 15, prestige < 3). */
+  onLevelPress?: () => void;
+  /** Called when user taps pencil to edit bio. Use to open profile-edit or bio editor. */
+  onEditBio?: () => void;
+  /** Called when user taps pencil to edit profile picture. Use to open profile-edit or avatar picker. */
+  onEditAvatar?: () => void;
 }
 
 export function ProfileHeader({
@@ -86,11 +120,14 @@ export function ProfileHeader({
   onBannerChange,
   avatarUri,
   username,
-  globalRank = 247,
+  anglerRating,
+  arRank,
+  localRank,
   level,
   xpInLevel,
   xpForNext,
   location,
+  bio,
   catches = 0,
   species = 0,
   wins = 0,
@@ -107,9 +144,20 @@ export function ProfileHeader({
   earnedBadges = [],
   displayedBadgeIds = [],
   onEditBadges,
+  onBadgePress,
+  displayItems,
+  onDisplayItemPress,
   proVerified = false,
+  levelTitle,
+  prestige = 0,
+  onLevelPress,
+  onEditBio,
+  onEditAvatar,
 }: ProfileHeaderProps) {
   const displayedBadges = earnedBadges.filter((b) => displayedBadgeIds.includes(b.id)).slice(0, 5);
+  const useDisplayItems = displayItems !== undefined;
+  const showRow = useDisplayItems ? (displayItems?.length ?? 0) > 0 : earnedBadges.length > 0;
+  const showSection = showRow || editable;
   const router = useRouter();
   const hasActiveStory = !!activeStory?.media_url;
 
@@ -210,119 +258,252 @@ export function ProfileHeader({
         )}
       </TouchableOpacity>
 
-      {/* Profile row: avatar overlaps banner bottom */}
-      <View style={styles.profileRow}>
-        <View style={styles.avatarWrap}>
-          <TouchableOpacity
-            onPress={handleProfileImageTap}
-            activeOpacity={0.9}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <View style={[
-              styles.avatarRing,
-              hasActiveStory && (storyAllViewed ? styles.avatarRingViewed : styles.avatarRingActive),
-            ]}>
-              {isValidImageUri(avatarUri) ? (
-                <Image source={{ uri: avatarUri }} style={styles.avatar} resizeMode="cover" />
-              ) : (
-                <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                  <Ionicons name="person" size={40} color={colors.lightSubtext} />
-                </View>
-              )}
-              {editable && !hasActiveStory && (
-                <View style={styles.grayCameraOverlay}>
-                  <Feather name="camera" size={24} color={colors.lightSubtext} />
-                </View>
+      {/* Level + XP bar — full width, minimal gaps */}
+      {(level != null || (xpInLevel != null || xpForNext != null)) && (
+        <TouchableOpacity
+          style={styles.levelBarFullWidth}
+          onPress={onLevelPress}
+          activeOpacity={onLevelPress ? 0.7 : 1}
+          disabled={!onLevelPress}
+        >
+          <View style={styles.levelCardTop}>
+            <View style={styles.levelTitleRow}>
+              <Text style={styles.levelLabel}>Level </Text>
+              <Text style={styles.levelNum}>{level ?? '—'}</Text>
+              {levelTitle ? (
+                <Text style={styles.levelTitle}> {levelTitle}</Text>
+              ) : null}
+              {prestige > 0 && (
+                <Text style={styles.prestigeLabel}> · P{prestige}</Text>
               )}
             </View>
-          </TouchableOpacity>
-          {editable && (
-            <TouchableOpacity
-              style={styles.addStoryTouchTarget}
-              onPress={handleAddStoryTap}
-              activeOpacity={0.8}
-            >
-              <Feather name="camera" size={18} color={ACCENT_BLUE} />
-              <Text style={styles.addStoryLabel}>Add story</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        <View style={styles.profileInfo}>
-          <View style={styles.usernameRow}>
-            <Text style={styles.username} numberOfLines={1}>{username}</Text>
-            {proVerified && <Ionicons name="checkmark-circle" size={18} color="#3B82F6" style={styles.proCheck} />}
+            {xpInLevel != null && xpForNext != null && xpForNext > 0 && (
+              <Text style={styles.xpTextRight}>
+                {xpInLevel} <Text style={styles.xpTextOf}>/ {xpForNext} XP</Text>
+              </Text>
+            )}
           </View>
-          {location ? (
-            <View style={styles.locationRow}>
-              <Feather name="map-pin" size={12} color={colors.lightSubtext} />
-              <Text style={styles.location}>{location}</Text>
-            </View>
-          ) : null}
-
-          {/* Level pill */}
-          {level !== undefined && (
-            <View style={styles.levelRow}>
-              <View style={styles.levelPill}>
-                <Text style={styles.levelPillTxt}>LV {level}</Text>
+          {(xpInLevel != null || xpForNext != null) && (
+            <View style={styles.xpBarWrap}>
+              <View style={styles.xpTrack}>
+                <View
+                  style={[
+                    styles.xpFill,
+                    {
+                      width: `${xpForNext != null && xpForNext > 0
+                        ? Math.min(100, Math.round((xpInLevel ?? 0) / xpForNext * 100))
+                        : 100}%` as any,
+                    },
+                  ]}
+                />
               </View>
-              {xpInLevel !== undefined && xpForNext !== undefined && xpForNext > 0 && (
-                <Text style={styles.xpText}>{xpInLevel} <Text style={styles.xpTextOf}>/ {xpForNext} XP</Text></Text>
-              )}
             </View>
           )}
+        </TouchableOpacity>
+      )}
 
-          {/* XP bar */}
-          {xpInLevel !== undefined && xpForNext !== undefined && xpForNext > 0 && (
-            <View style={styles.xpTrack}>
-              <View style={[styles.xpFill, { width: `${Math.min(100, Math.round((xpInLevel / xpForNext) * 100))}%` as any }]} />
-            </View>
-          )}
-
-          {/* Global Rank — neon prominent */}
-          <View style={styles.globalRankRow}>
-            <Text style={styles.globalRankLabel}>GLOBAL RANK</Text>
-            <Text style={styles.globalRankNum}>
-              {globalRank !== undefined ? `#${globalRank}` : '—'}
-            </Text>
-          </View>
-
-          {/* Floating badges — above level/XP, tappable to edit (max 5) */}
-          {earnedBadges.length > 0 && (
-            <View style={styles.badgesFloatingWrap}>
+      {/* Profile section: avatar centered, add story under, AR stats right */}
+      <View style={styles.profileSectionWrap}>
+        <View style={styles.profileSection}>
+          {/* Center: Profile picture + add story */}
+          <View style={styles.avatarCenterWrap}>
+            <View style={styles.avatarTouchWrap}>
               <TouchableOpacity
-                style={styles.badgesLabelRow}
-                onPress={editable ? onEditBadges : undefined}
-                disabled={!editable}
-                activeOpacity={editable ? 0.7 : 1}
+                onPress={handleProfileImageTap}
+                activeOpacity={0.9}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                style={styles.avatarTouch}
               >
-                <Text style={styles.badgesLabel}>Badges</Text>
-                {editable && (
-                  <View style={styles.badgesPencilWrap}>
-                    <Feather name="edit-2" size={12} color={colors.lightSubtext} />
+                <View style={[
+                  styles.avatarRing,
+                  hasActiveStory && (storyAllViewed ? styles.avatarRingViewed : styles.avatarRingActive),
+                ]}>
+                  {isValidImageUri(avatarUri) ? (
+                    <Image source={{ uri: avatarUri }} style={styles.avatar} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                      <Ionicons name="person" size={40} color={colors.lightSubtext} />
+                    </View>
+                  )}
+                  <View style={styles.usernameOverlay}>
+                    <Text style={styles.usernameOverlayText} numberOfLines={1}>{username}</Text>
+                    {proVerified && <Ionicons name="checkmark-circle" size={14} color={FRIENDS_BLUE} style={styles.proCheckOverlay} />}
                   </View>
-                )}
+                  {editable && !hasActiveStory && (
+                    <View style={styles.grayCameraOverlay}>
+                      <Feather name="camera" size={24} color={colors.lightSubtext} />
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
-              <View style={styles.badgesPillsRow}>
-                {displayedBadges.map((b) => (
-                  <View key={b.id} style={styles.badgePill}>
-                    <Text style={styles.badgePillIcon}>{b.icon}</Text>
-                  </View>
-                ))}
+              {editable && onEditAvatar && (
+                <TouchableOpacity
+                  style={styles.avatarPencilBtn}
+                  onPress={onEditAvatar}
+                  hitSlop={8}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="edit-2" size={14} color="#fff" />
+                </TouchableOpacity>
+              )}
+            </View>
+            {editable && (
+              <TouchableOpacity
+                style={styles.addStoryTouchTarget}
+                onPress={handleAddStoryTap}
+                activeOpacity={0.8}
+              >
+                <Feather name="camera" size={18} color={ACCENT_BLUE} />
+                <Text style={styles.addStoryLabel}>Add story</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Right: Podium layout — Trophies top center, Global left / Local right below */}
+          <View style={styles.rightColumn}>
+            <View style={[styles.rankStatBlock, styles.rankStatAr, styles.rankStatCentered]}>
+              <View style={styles.rankStatTrophyRow}>
+                <Ionicons name="trophy" size={18} color={colors.gold} />
+                <Text style={[styles.rankStatValue, styles.rankStatValueAr]}>
+                  {anglerRating != null ? anglerRating : '—'}
+                </Text>
+              </View>
+              <Text style={[styles.rankStatLabel, styles.rankStatLabelAr]}>Trophies</Text>
+            </View>
+            <View style={styles.rankStatRow}>
+              <View style={[styles.rankStatBlock, styles.rankStatGlobal, styles.rankStatCentered, styles.rankStatHalf]}>
+                <Text style={[styles.rankStatValue, styles.rankStatValueBlue]}>
+                  {arRank != null ? `#${arRank}` : '—'}
+                </Text>
+                <Text style={[styles.rankStatLabel, styles.rankStatLabelBlue]}>Global</Text>
+              </View>
+              <View style={[styles.rankStatBlock, styles.rankStatLocal, styles.rankStatCentered, styles.rankStatHalf]}>
+                <Text style={[styles.rankStatValue, styles.rankStatValueBlue]}>
+                  {localRank != null ? `#${localRank}` : '—'}
+                </Text>
+                <Text style={[styles.rankStatLabel, styles.rankStatLabelBlue]}>Local</Text>
               </View>
             </View>
-          )}
+          </View>
         </View>
       </View>
 
-      {/* Full-width stats row: Catches · Species · Wins · Friends */}
+      <View style={styles.profileSectionLower}>
+        {(location || bio || (editable && onEditBio)) ? (
+          <View style={styles.locationBioBlock}>
+            {location ? (
+              <View style={styles.locationRow}>
+                <Feather name="map-pin" size={12} color={colors.lightSubtext} />
+                <Text style={styles.location}>{location}</Text>
+              </View>
+            ) : null}
+            {editable && onEditBio ? (
+              <TouchableOpacity
+                style={styles.bioRow}
+                onPress={onEditBio}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.bio, !bio?.trim() && styles.bioPlaceholder]} numberOfLines={2}>
+                  {bio?.trim() ? bio : 'Add a bio'}
+                </Text>
+                <View style={styles.bioPencilWrap}>
+                  <Feather name="edit-2" size={14} color={colors.lightSubtext} />
+                </View>
+              </TouchableOpacity>
+            ) : bio ? (
+              <Text style={styles.bio} numberOfLines={2}>{bio}</Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {/* Trophies & Badges row */}
+        {showSection && (
+          <View style={styles.badgesFloatingWrap}>
+            <TouchableOpacity
+              style={styles.badgesLabelRow}
+              onPress={editable ? onEditBadges : undefined}
+              disabled={!editable}
+              activeOpacity={editable ? 0.7 : 1}
+            >
+              <Text style={styles.badgesLabel}>Trophies & badges</Text>
+              {editable && (
+                <View style={styles.badgesPencilWrap}>
+                  <Feather name="edit-2" size={12} color={colors.lightSubtext} />
+                </View>
+              )}
+            </TouchableOpacity>
+            {useDisplayItems && displayItems && displayItems.length > 0 ? (
+              <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[styles.badgesPillsRow, { paddingRight: 24 }]}
+                  nestedScrollEnabled
+                >
+                  {displayItems.map((item) => {
+                    const place = item.type === 'trophy' ? item.place : getInferredPlaceFromBadge(item.badgeKey, item.label);
+                    const palette = place != null ? PLACE_PALETTE[place] : null;
+                    const isGold = place === 1;
+                    return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[
+                        styles.badgePill,
+                        palette && { borderColor: palette.border, borderWidth: 1.5 },
+                        isGold && styles.badgePillGold,
+                        hasCustomSpeciesBadgeImage(item.badgeKey) && styles.badgePillNoCircle,
+                        hasCustomSpeciesBadgeImage(item.badgeKey) && styles.badgePillSpecies,
+                      ]}
+                      onPress={() => onDisplayItemPress?.(item)}
+                      activeOpacity={0.7}
+                      disabled={!onDisplayItemPress}
+                    >
+                      {item.type === 'badge' ? (
+                        (() => {
+                          const place = getInferredPlaceFromBadge(item.badgeKey, item.label);
+                          if (place != null) return <AnimatedTrophyBadge place={place} size={62} />;
+                          if (hasCustomSpeciesBadgeImage(item.badgeKey))
+                            return <SpeciesBadgeImage badgeKey={item.badgeKey} size={68} scale={1.3} />;
+                          const icon = item.badgeKey.startsWith('level-') ? getLevelBadgeIcon(item.badgeKey) : item.icon;
+                          if (item.rarity) return <RarityBadge rarity={item.rarity} icon={icon} size={item.badgeKey.startsWith('level-') ? 42 : item.badgeKey.startsWith('achievement-') ? 48 : 62} animated />;
+                          return <Text style={styles.badgePillIcon}>{icon}</Text>;
+                        })()
+                      ) : (
+                        <AnimatedTrophyBadge place={item.place as 1 | 2 | 3 | 4 | 5} size={62} />
+                      )}
+                    </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : !useDisplayItems && displayedBadges.length > 0 ? (
+                <View style={styles.badgesPillsRow}>
+                  {displayedBadges.map((b) => (
+                    <TouchableOpacity
+                      key={b.id}
+                      style={styles.badgePill}
+                      onPress={() => onBadgePress?.(b)}
+                      activeOpacity={0.7}
+                      disabled={!onBadgePress}
+                    >
+                      <Text style={styles.badgePillIcon}>{b.icon}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : editable ? (
+                <Text style={styles.badgesHint}>Tap pencil to choose up to 3</Text>
+              ) : null}
+          </View>
+        )}
+      </View>
+
+      {/* Full-width stats row: Catches · Species · Wins · Friends (color-coded) */}
       <View style={styles.statsRow}>
         <TouchableOpacity
           style={styles.statPill}
           onPress={() => onStatPress?.('catches')}
           disabled={!onStatPress}
         >
-          <Text style={styles.statValue}>{catches}</Text>
-          <Text style={styles.statLabel}>Catches</Text>
+          <Text style={[styles.statValue, styles.statValueCatches]}>{catches}</Text>
+          <Text style={[styles.statLabel, styles.statLabelCatches]}>Catches</Text>
         </TouchableOpacity>
         <View style={styles.statDivider} />
         <TouchableOpacity
@@ -330,8 +511,8 @@ export function ProfileHeader({
           onPress={() => onStatPress?.('species')}
           disabled={!onStatPress}
         >
-          <Text style={styles.statValue}>{species}</Text>
-          <Text style={styles.statLabel}>Species</Text>
+          <Text style={[styles.statValue, styles.statValueSpecies]}>{species}</Text>
+          <Text style={[styles.statLabel, styles.statLabelSpecies]}>Species</Text>
         </TouchableOpacity>
         <View style={styles.statDivider} />
         <TouchableOpacity
@@ -339,8 +520,8 @@ export function ProfileHeader({
           onPress={() => onStatPress?.('wins')}
           disabled={!onStatPress}
         >
-          <Text style={styles.statValue}>{wins}</Text>
-          <Text style={styles.statLabel}>Wins</Text>
+          <Text style={[styles.statValue, styles.statValueWins]}>{wins}</Text>
+          <Text style={[styles.statLabel, styles.statLabelWins]}>Wins</Text>
         </TouchableOpacity>
         <View style={styles.statDivider} />
         <TouchableOpacity
@@ -348,8 +529,8 @@ export function ProfileHeader({
           onPress={onFriendsPress}
           disabled={!onFriendsPress}
         >
-          <Text style={styles.statValue}>{friends ?? 0}</Text>
-          <Text style={styles.statLabel}>Friends</Text>
+          <Text style={[styles.statValue, styles.statValueFriends]}>{friends ?? 0}</Text>
+          <Text style={[styles.statLabel, styles.statLabelFriends]}>Friends</Text>
         </TouchableOpacity>
       </View>
     </>
@@ -386,15 +567,102 @@ const styles = StyleSheet.create({
   watermark1: { position: 'absolute', left: 20, top: 20 },
   watermark2: { position: 'absolute', left: 80, bottom: 30 },
   watermark3: { position: 'absolute', right: 40, top: 50 },
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 24,
-    marginBottom: 10,
+  levelBarFullWidth: {
+    marginTop: 28,
+    marginHorizontal: 6,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,200,0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 10,
+  },
+  profileSectionWrap: {
+    marginTop: 16,
     paddingHorizontal: SCREEN_PADDING,
   },
-  avatarWrap: {
-    position: 'relative' as const,
+  profileSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  avatarCenterWrap: {
+    alignItems: 'center',
+    flex: 0,
+  },
+  addStoryTouchTarget: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 44,
+    minWidth: 44,
+    marginTop: 6,
+  },
+  levelCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  levelTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  xpTextRight: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.lightText,
+  },
+  levelLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: GOLD,
+  },
+  levelNum: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: GOLD,
+    letterSpacing: 0.5,
+  },
+  levelTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: GOLD,
+    opacity: 0.95,
+  },
+  prestigeLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: GOLD,
+    letterSpacing: 0.5,
+  },
+  xpBarWrap: {
+    width: '100%',
+  },
+  avatarTouchWrap: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+  avatarTouch: {
+    alignItems: 'center',
+  },
+  avatarPencilBtn: {
+    position: 'absolute',
+    bottom: 4,
+    right: '50%',
+    marginRight: -52,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
   avatarRing: {
@@ -405,7 +673,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.lightCard,
   },
   avatarRingActive: {
-    borderColor: RING_UNVIEWED_BLUE,
+    borderColor: FRIENDS_BLUE,
   },
   avatarRingViewed: {
     borderColor: colors.lightBorder,
@@ -422,6 +690,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  usernameOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderBottomLeftRadius: 45,
+    borderBottomRightRadius: 45,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  usernameOverlayText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  proCheckOverlay: {
+    marginLeft: 4,
+  },
   grayCameraOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.15)',
@@ -429,75 +719,171 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  addStoryTouchTarget: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 44,
-    minWidth: 44,
-    marginTop: 6,
-  },
   addStoryLabel: {
     fontSize: 16,
     fontWeight: '800',
     color: ACCENT_BLUE,
   },
-  usernameRow: {
+  locationBioBlock: {
+    width: '100%',
+    marginBottom: 18,
+  },
+  locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
-    gap: 4,
+    gap: 6,
+    marginBottom: 6,
   },
-  username: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  proCheck: {
-    marginLeft: 2,
-  },
-  profileInfo: {
-    marginLeft: 14,
-    marginBottom: 4,
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  levelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  levelPill: {
-    backgroundColor: GOLD,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  levelPillTxt: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#1a1000',
-    letterSpacing: 0.8,
-  },
-  xpText: {
+  location: {
     fontSize: 13,
-    fontWeight: '800',
-    color: GOLD,
-  },
-  xpTextOf: {
-    fontSize: 12,
     fontWeight: '500',
     color: colors.lightSubtext,
   },
+  bioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  bio: {
+    fontSize: 14,
+    color: colors.lightText,
+    lineHeight: 20,
+    textAlign: 'center',
+    flex: 1,
+  },
+  bioPencilWrap: {
+    padding: 4,
+  },
+  bioPlaceholder: {
+    color: colors.lightSubtext,
+    fontStyle: 'italic',
+  },
+  profileSectionLower: {
+    marginTop: 16,
+    marginBottom: 20,
+    paddingHorizontal: SCREEN_PADDING,
+    alignItems: 'center',
+  },
+  rightColumn: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 120,
+    gap: 6,
+  },
+  rankStatRow: {
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  rankStatBlock: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    minWidth: 64,
+  },
+  rankStatCentered: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankStatHalf: {
+    flex: 1,
+    minWidth: 72,
+    maxWidth: 90,
+  },
+  rankStatAr: {
+    backgroundColor: 'rgba(255,200,69,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,200,69,0.35)',
+    ...Platform.select({
+      ios: { shadowColor: GOLD, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 8 },
+      android: { elevation: 4 },
+    }),
+  },
+  rankStatGlobal: {
+    backgroundColor: 'rgba(0,229,200,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,200,0.35)',
+    ...Platform.select({
+      ios: { shadowColor: TEAL, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 6 },
+      android: { elevation: 3 },
+    }),
+  },
+  rankStatLocal: {
+    backgroundColor: 'rgba(0,229,200,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,200,0.35)',
+    ...Platform.select({
+      ios: { shadowColor: TEAL, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 6 },
+      android: { elevation: 3 },
+    }),
+  },
+  rankStatValue: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  rankStatTrophyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  rankStatValueAr: {
+    color: GOLD,
+    textShadowColor: 'rgba(255,200,69,0.8)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
+  },
+  rankStatLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    marginTop: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  rankStatLabelAr: {
+    color: 'rgba(255,200,69,0.95)',
+  },
+  rankStatValueBlue: {
+    color: TEAL,
+    textShadowColor: 'rgba(0,229,200,0.7)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
+  },
+  rankStatLabelBlue: {
+    color: 'rgba(0,229,200,0.95)',
+  },
+  xpWrap: {
+    alignSelf: 'stretch',
+    marginBottom: 20,
+  },
+  xpText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: TEAL,
+    marginTop: 4,
+  },
+  xpTextOf: {
+    fontWeight: '500',
+    color: colors.lightSubtext,
+  },
+  levelTitleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: GOLD,
+    marginLeft: 4,
+    opacity: 0.95,
+  },
   xpTrack: {
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.lightBorder,
-    marginBottom: 6,
+    height: 6,
+    borderRadius: 2,
+    backgroundColor: 'rgba(168,196,212,0.25)',
     overflow: 'hidden',
+    width: '100%',
   },
   xpFill: {
     height: '100%',
@@ -526,25 +912,13 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 8,
   },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  location: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: colors.lightSubtext,
-  },
   badgesFloatingWrap: {
-    marginBottom: 10,
+    marginBottom: 18,
+    marginRight: -12,
     paddingVertical: 8,
     paddingHorizontal: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,229,200,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,229,200,0.15)',
-    alignSelf: 'flex-start',
+    paddingRight: 12,
+    alignSelf: 'stretch',
   },
   badgesLabelRow: {
     flexDirection: 'row',
@@ -565,21 +939,52 @@ const styles = StyleSheet.create({
   badgesPillsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
+    gap: 10,
+    flexWrap: 'nowrap',
   },
   badgePill: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.25)',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.lightCard,
     borderWidth: 1,
-    borderColor: 'rgba(0,229,200,0.25)',
+    borderColor: colors.lightBorder,
+  },
+  badgePillSpecies: {
+    width: 88,
+    height: 88,
+    overflow: 'visible' as const,
+  },
+  badgePillNoCircle: {
+    borderRadius: 0,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+  },
+  badgePillGold: {
+    shadowColor: GOLD,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  badgePillIcon: {
+    fontSize: 28,
+  },
+  badgePillTrophyWrap: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgePillIcon: {
-    fontSize: 18,
+  badgePillPlace: {
+    fontSize: 8,
+    fontWeight: '800',
+    marginTop: 0,
+  },
+  badgesHint: {
+    fontSize: 12,
+    color: colors.lightSubtext,
+    marginTop: 4,
   },
   statsRow: {
     flexDirection: 'row',
@@ -613,4 +1018,12 @@ const styles = StyleSheet.create({
     color: colors.lightSubtext,
     marginTop: 2,
   },
+  statValueCatches: { color: TEAL },
+  statLabelCatches: { color: TEAL + 'cc' },
+  statValueSpecies: { color: SPECIES_GREEN },
+  statLabelSpecies: { color: SPECIES_GREEN + 'cc' },
+  statValueWins: { color: GOLD },
+  statLabelWins: { color: GOLD + 'dd' },
+  statValueFriends: { color: FRIENDS_BLUE },
+  statLabelFriends: { color: FRIENDS_BLUE + 'cc' },
 });

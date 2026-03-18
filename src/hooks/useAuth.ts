@@ -7,6 +7,7 @@ import {
   signOut,
   onAuthStateChange,
   createCatch,
+  updateCatch,
   getPublicUrl,
   uploadImageAsJpegToStorage,
 } from '@/src/lib/supabase';
@@ -33,12 +34,24 @@ export interface UserProfile {
   state?: string;
   location?: string;
   bio?: string;
+  /** When true, user can use dev controls, delete any feed post, and delete any tournament entry. */
+  isModerator: boolean;
 }
 
 export interface AuthState {
   user: UserProfile | null;
   isLoading: boolean;
   isSignedIn: boolean;
+}
+
+function isProFromProfile(
+  p: { subscription_plan?: string | null; pro_expires_at?: string | null } | null | undefined
+): boolean {
+  if (!p) return false;
+  if ((p.subscription_plan as string) !== 'pro') return false;
+  const exp = p.pro_expires_at;
+  if (exp == null) return true;
+  return new Date(exp) > new Date();
 }
 
 /**
@@ -81,21 +94,21 @@ export function useAuth() {
           try {
             const path = mediaPath.log(userId, a.id);
             await uploadImageAsJpegToStorage('media', path, a.payload.photoUri);
-            photoUrl = getPublicUrl('media', path);
             photoPath = path;
           } catch {
             // continue without photo
           }
         }
-        await createCatch(userId, {
+        const created = await createCatch(userId, {
           species: a.payload.species,
           weight_lb: a.payload.weight_lb > 0 ? a.payload.weight_lb : 0.1,
           length_in: a.payload.length_in && a.payload.length_in > 0 ? a.payload.length_in : undefined,
           notes: a.payload.notes || undefined,
-          photo_url: photoUrl,
-          photo_path: photoPath,
           taken_at: a.payload.taken_at,
         });
+        if (photoPath && created?.id) {
+          await updateCatch(created.id, { photo_path: photoPath });
+        }
         await removePendingAction(a.id);
         migrated++;
       } catch (e) {
@@ -169,11 +182,12 @@ export function useAuth() {
                   avatarUrl: profile.avatar_url,
                   bannerUrl: profile.banner_url,
                   subscriptionPlan: (profile.subscription_plan as 'free' | 'pro') ?? 'free',
-                  proVerified: profile.pro_verified ?? false,
+                  proVerified: isProFromProfile(profile),
                   city: profile.city,
                   state: profile.state,
                   location: profile.location,
                   bio: profile.bio,
+                  isModerator: (profile as { is_moderator?: boolean }).is_moderator === true,
                 }
               : null,
             isLoading: false,
@@ -187,52 +201,55 @@ export function useAuth() {
           });
         }
 
-        // Set up auth state listener
-        unsubscribe = onAuthStateChange(async (authUser) => {
-          if (authUser) {
-            const migrationResult = await migrateGuestData(authUser.id);
-            if (migrationResult.failed > 0) {
-              console.warn(`Migration: ${migrationResult.migrated} migrated, ${migrationResult.failed} failed`);
-            }
-            let profile = await getUserProfile(authUser.id);
-            if (!profile) {
-              const displayName =
-                (authUser.user_metadata?.display_name as string) ??
-                (authUser.user_metadata?.full_name as string) ??
-                authUser.email?.split('@')[0] ??
-                'Angler';
-              const username =
-                (authUser.user_metadata?.username as string) ??
-                `user_${authUser.id.replace(/-/g, '').slice(0, 12)}`;
-              profile = await ensureProfileForUser(authUser.id, displayName, undefined, username);
-            }
-            setState({
-              user: profile
-                ? {
-                    id: authUser.id,
-                    email: authUser.email,
-                    displayName: profile.name ?? profile.display_name,
-                    username: profile.username,
-                    avatarUrl: profile.avatar_url,
-                    bannerUrl: profile.banner_url,
-                    subscriptionPlan: (profile.subscription_plan as 'free' | 'pro') ?? 'free',
-                    proVerified: profile.pro_verified ?? false,
-                    city: profile.city,
-                    state: profile.state,
-                    location: profile.location,
-                    bio: profile.bio,
-                  }
-                : null,
-              isLoading: false,
-              isSignedIn: !!profile,
-            });
-          } else {
-            setState({
-              user: null,
-              isLoading: false,
-              isSignedIn: false,
-            });
+        // Set up auth state listener. Only refetch profile on real sign-in so we don't
+        // overwrite profile pic/name when TOKEN_REFRESHED fires (which would revert to stale data).
+        unsubscribe = onAuthStateChange(async (event, authUser) => {
+          if (!authUser) {
+            setState({ user: null, isLoading: false, isSignedIn: false });
+            return;
           }
+          const isRealSignIn = event === 'INITIAL_SESSION' || event === 'SIGNED_IN';
+          if (!isRealSignIn) {
+            // TOKEN_REFRESHED, USER_UPDATED, etc. — keep current user state (profile pic, name) intact
+            return;
+          }
+          const migrationResult = await migrateGuestData(authUser.id);
+          if (migrationResult.failed > 0) {
+            console.warn(`Migration: ${migrationResult.migrated} migrated, ${migrationResult.failed} failed`);
+          }
+          let profile = await getUserProfile(authUser.id);
+          if (!profile) {
+            const displayName =
+              (authUser.user_metadata?.display_name as string) ??
+              (authUser.user_metadata?.full_name as string) ??
+              authUser.email?.split('@')[0] ??
+              'Angler';
+            const username =
+              (authUser.user_metadata?.username as string) ??
+              `user_${authUser.id.replace(/-/g, '').slice(0, 12)}`;
+            profile = await ensureProfileForUser(authUser.id, displayName, undefined, username);
+          }
+          setState({
+            user: profile
+              ? {
+                  id: authUser.id,
+                  email: authUser.email,
+                  displayName: profile.name ?? profile.display_name,
+                  username: profile.username,
+                  avatarUrl: profile.avatar_url,
+                  bannerUrl: profile.banner_url,
+                  subscriptionPlan: (profile.subscription_plan as 'free' | 'pro') ?? 'free',
+                  proVerified: isProFromProfile(profile),
+                  city: profile.city,
+                  state: profile.state,
+                  location: profile.location,
+                  bio: profile.bio,
+                  isModerator: (profile as { is_moderator?: boolean }).is_moderator === true,
+                }
+              : null,
+            isLoading: false,
+            isSignedIn: !!profile,
+          });
         });
       } catch (err) {
         console.error('Auth initialization error:', err);
@@ -297,11 +314,12 @@ export function useAuth() {
           avatarUrl,
           bannerUrl,
           subscriptionPlan: (profile.subscription_plan as 'free' | 'pro') ?? 'free',
-          proVerified: profile.pro_verified ?? false,
+          proVerified: isProFromProfile(profile),
           city: profile.city,
           state: profile.state,
           location: profile.location,
           bio: profile.bio,
+          isModerator: (profile as { is_moderator?: boolean }).is_moderator === true,
         },
       }));
     }

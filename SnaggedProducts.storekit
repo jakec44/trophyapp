@@ -1,0 +1,55 @@
+{
+  "identifier" : "SnaggedPro",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "29.99",
+      "internalID" : "snagged_pro_lifetime",
+      "localizations" : [
+        {
+          "description" : "Snagged Pro one-time lifetime access",
+          "displayName" : "Snagged Pro Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "snagged_pro_lifetime",
+      "referenceName" : "Snagged Pro Lifetime",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {},
+  "subscriptionGroups" : [
+    {
+      "id" : "snagged_pro",
+      "localizations" : [],
+      "name" : "Snagged Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "snagged_pro_monthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Snagged Pro monthly subscription",
+              "displayName" : "Snagged Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "snagged_pro_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Snagged Pro Monthly",
+          "subscriptionGroupID" : "snagged_pro",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0
+  }
+}

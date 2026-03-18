@@ -1,10 +1,11 @@
 /**
  * LogbookGridTile — 9:16 aspect ratio tile for 3-column grid.
  * Shows fish name (from passport), weight, rarity label badge.
+ * Bass 6+ lbs: golden animated glowing border with floating gold dust.
  */
 
-import { useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ImageSourcePropType, Dimensions } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ImageSourcePropType, Dimensions, Platform, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Catch } from '@/utils/mockData';
@@ -24,6 +25,34 @@ function getRarityColor(rarity?: string): string {
   }
 }
 
+/** Glow by rarity: common = none, uncommon = green, rare = blue, epic = purple, legendary/mythic = super glow */
+function getGlowStyle(rarity: string, color: string): {
+  shadowColor?: string;
+  shadowOffset?: { width: number; height: number };
+  shadowOpacity?: number;
+  shadowRadius?: number;
+  elevation?: number;
+  borderWidth?: number;
+  borderColor?: string;
+} {
+  if (rarity === 'common') return {};
+  const isSuperGlow = rarity === 'legendary' || rarity === 'mythic';
+  if (Platform.OS === 'ios') {
+    return {
+      shadowColor: color,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: isSuperGlow ? 0.85 : (rarity === 'uncommon' ? 0.5 : 0.65),
+      shadowRadius: isSuperGlow ? 16 : (rarity === 'uncommon' ? 6 : rarity === 'rare' ? 8 : 10),
+    };
+  }
+  // Android: use colored border as glow (elevation doesn't support color)
+  return {
+    elevation: isSuperGlow ? 12 : (rarity === 'uncommon' ? 4 : rarity === 'rare' ? 6 : 8),
+    borderWidth: isSuperGlow ? 2.5 : 1.5,
+    borderColor: isSuperGlow ? color : color + '99',
+  };
+}
+
 function getPassportInfo(speciesRaw?: string): { name: string; rarity: string } {
   if (!speciesRaw) return { name: 'Unknown', rarity: 'common' };
   const id = findPassportSpeciesId(speciesRaw);
@@ -32,6 +61,114 @@ function getPassportInfo(speciesRaw?: string): { name: string; rarity: string } 
     name: entry?.name ?? speciesRaw,
     rarity: entry?.rarity ?? 'common',
   };
+}
+
+function isBassSixPlus(c: Catch): boolean {
+  const species = (c.species ?? '').toLowerCase();
+  const isBass = species.includes('bass');
+  return isBass && c.weight >= 6;
+}
+
+/** Scatter position in border band (0-1 along perimeter, 0-1 depth from edge) */
+function scatterPos(i: number, n: number) {
+  const a = ((i * 17 + 7) % n) / n;
+  const b = ((i * 13 + 3) % n) / n;
+  return { along: a, depth: 0.15 + b * 0.25 };
+}
+
+/** Animated golden border + rising gold dust for bass 6+ lbs */
+function GoldenBassBorderOverlay() {
+  const DUST_COUNT = 38;
+  const dustY = useRef(
+    Array.from({ length: DUST_COUNT }, () => new Animated.Value(0))
+  ).current;
+  const dustOp = useRef(
+    Array.from({ length: DUST_COUNT }, () => new Animated.Value(0.25))
+  ).current;
+
+  useEffect(() => {
+    const dur = 2200;
+    const loops = dustY.map((y, i) => {
+      const delay = (i * 97) % 800;
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.parallel([
+            Animated.timing(y, {
+              toValue: 1,
+              duration: dur,
+              easing: Easing.linear,
+              useNativeDriver: true,
+            }),
+            Animated.sequence([
+              Animated.timing(dustOp[i], {
+                toValue: 0.9,
+                duration: dur * 0.15,
+                useNativeDriver: true,
+              }),
+              Animated.timing(dustOp[i], {
+                toValue: 0.1,
+                duration: dur * 0.85,
+                easing: Easing.in(Easing.quad),
+                useNativeDriver: true,
+              }),
+            ]),
+          ]),
+          Animated.parallel([
+            Animated.timing(y, { toValue: 0, duration: 0, useNativeDriver: true }),
+            Animated.timing(dustOp[i], { toValue: 0.25, duration: 0, useNativeDriver: true }),
+          ]),
+        ])
+      );
+    });
+    loops.forEach((l) => l.start());
+    return () => loops.forEach((l) => l.stop());
+  }, [dustY, dustOp]);
+
+  const dustData = Array.from({ length: DUST_COUNT }, (_, i) => {
+    const { along, depth } = scatterPos(i, DUST_COUNT);
+    const sizeVariant = i % 3;
+    const sz = sizeVariant === 0 ? 1.5 : sizeVariant === 1 ? 2.5 : 3;
+    if (along < 0.25) return { left: `${(along / 0.25) * 92 + 4}%`, bottom: `${depth * 10}%`, size: sz };
+    if (along < 0.5) return { right: `${depth * 10}%`, top: `${((along - 0.25) / 0.25) * 92 + 4}%`, size: sz };
+    if (along < 0.75) return { top: `${depth * 10}%`, left: `${((along - 0.5) / 0.25) * 92 + 4}%`, size: sz };
+    return { left: `${depth * 10}%`, top: `${((along - 0.75) / 0.25) * 92 + 4}%`, size: sz };
+  });
+
+  return (
+    <View pointerEvents="none" style={goldenStyles.overlay}>
+      <View style={goldenStyles.innerShine} pointerEvents="none" />
+      {dustData.map((d, i) => {
+        const yInterp = dustY[i].interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, 20],
+        });
+        const size = d.size;
+        const isLarge = size >= 2.5;
+        return (
+          <Animated.View
+            key={i}
+            style={[
+              goldenStyles.dust,
+              {
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                borderWidth: isLarge ? 0.5 : 0,
+                borderColor: isLarge ? 'rgba(255,248,220,0.6)' : undefined,
+                left: 'left' in d ? d.left : undefined,
+                right: 'right' in d ? d.right : undefined,
+                top: 'top' in d ? d.top : undefined,
+                bottom: 'bottom' in d ? d.bottom : undefined,
+                opacity: dustOp[i],
+                transform: [{ translateY: Animated.multiply(yInterp, -1) }],
+              },
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
 }
 
 const GAP = 7;
@@ -70,10 +207,11 @@ export function LogbookGridTile({
   const rarityColor = getRarityColor(rarity);
   const rarityLabel = rarity.charAt(0).toUpperCase() + rarity.slice(1);
   const displayName = (catchItem.name ?? passportName).trim() || passportName;
+  const glowStyle = getGlowStyle(rarity, rarityColor);
 
   return (
     <TouchableOpacity style={styles.tile} onPress={onPress} activeOpacity={0.9}>
-      <View style={styles.imageContainer}>
+      <View style={[styles.imageContainer, glowStyle]}>
         {showImage ? (
           <Image
             source={imageSource as ImageSourcePropType}
@@ -121,6 +259,8 @@ export function LogbookGridTile({
             </Text>
           )}
         </LinearGradient>
+
+        {isBassSixPlus(catchItem) && <GoldenBassBorderOverlay />}
       </View>
     </TouchableOpacity>
   );
@@ -205,5 +345,44 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.9)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+});
+
+const GOLD_DARK = '#B8860B';
+const GOLD_MAIN = '#FFD700';
+const GOLD_BRIGHT = '#FFF8DC';
+const goldenStyles = StyleSheet.create({
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: GOLD_DARK,
+    backgroundColor: 'transparent',
+    ...(Platform.OS === 'ios' && {
+      shadowColor: GOLD_MAIN,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 8,
+    }),
+  },
+  innerShine: {
+    position: 'absolute',
+    top: 1,
+    left: 1,
+    right: 1,
+    bottom: 1,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: GOLD_BRIGHT,
+  },
+  dust: {
+    position: 'absolute',
+    backgroundColor: GOLD_BRIGHT,
+    ...(Platform.OS === 'ios' && {
+      shadowColor: GOLD_MAIN,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 1,
+      shadowRadius: 2,
+    }),
   },
 });

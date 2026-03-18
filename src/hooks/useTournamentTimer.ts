@@ -55,11 +55,15 @@ export function useTournamentTimer(endsAt: string | undefined): TournamentTimerS
   return remaining;
 }
 
-/** Format remaining time for display (e.g. "2d 5h 03m 42s") */
+/** Format remaining time: over 24h → "1 day and 23 hr" / "2 days"; under 24h → "5h 03m 42s" */
 export function formatTournamentCountdown(state: TournamentTimerState): string {
   if (state.ended) return 'Ended';
+  if (state.days > 0) {
+    const dayStr = state.days === 1 ? '1 day' : `${state.days} days`;
+    if (state.hours > 0) return `${dayStr} and ${state.hours} hr`;
+    return dayStr;
+  }
   const parts: string[] = [];
-  if (state.days > 0) parts.push(`${state.days}d`);
   parts.push(`${state.hours}h`);
   parts.push(`${String(state.mins).padStart(2, '0')}m`);
   parts.push(`${String(state.secs).padStart(2, '0')}s`);

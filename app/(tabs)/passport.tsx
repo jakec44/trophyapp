@@ -12,6 +12,8 @@ import {
   Modal,
   ActivityIndicator,
   FlatList,
+  TextInput,
+  Keyboard,
 } from 'react-native';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
@@ -33,7 +35,7 @@ const RARITY_COLORS: Record<SpeciesRarity, string> = {
   mythic: '#EC4899',
 };
 import { SPECIES_EXAMPLE_IMAGES } from '@/src/constants/speciesExampleImages';
-import { getUserCatches } from '@/src/lib/supabase';
+import { getUserCatches, insertSpeciesRequest } from '@/src/lib/supabase';
 import { findPassportSpeciesId } from '@/src/lib/speciesMapper';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import Feather from '@expo/vector-icons/Feather';
@@ -131,6 +133,11 @@ const BLUEGILL_LOCKED = require('../../assets/passport-bluegill/33.png');
 const BLUEGILL_UNLOCKED = require('../../assets/passport-bluegill/32.png');
 const BLUEGILL_SPECIES_ID = 'bluegill';
 
+/** Pumpkinseed custom assets: grey = locked (179), color = unlocked (178) */
+const PUMPKINSEED_LOCKED = require('../../assets/passport-pumpkinseed/179.png');
+const PUMPKINSEED_UNLOCKED = require('../../assets/passport-pumpkinseed/178.png');
+const PUMPKINSEED_SPECIES_ID = 'pumpkinseed';
+
 /** Channel catfish custom assets: grey = locked, color = unlocked */
 const CHANNELCATFISH_LOCKED = require('../../assets/passport-channel-catfish/105.png');
 const CHANNELCATFISH_UNLOCKED = require('../../assets/passport-channel-catfish/104.png');
@@ -171,6 +178,11 @@ const BROOKTROUT_LOCKED = require('../../assets/passport-brook-trout/119.png');
 const BROOKTROUT_UNLOCKED = require('../../assets/passport-brook-trout/118.png');
 const BROOKTROUT_SPECIES_ID = 'brook-trout';
 
+/** Tiger trout custom assets: grey = locked (183), color = unlocked (182) */
+const TIGERTROUT_LOCKED = require('../../assets/passport-tiger-trout/183.png');
+const TIGERTROUT_UNLOCKED = require('../../assets/passport-tiger-trout/182.png');
+const TIGERTROUT_SPECIES_ID = 'tiger-trout';
+
 /** Muskie custom assets: grey = locked, color = unlocked */
 const MUSKIE_LOCKED = require('../../assets/passport-muskie/121.png');
 const MUSKIE_UNLOCKED = require('../../assets/passport-muskie/120.png');
@@ -180,6 +192,11 @@ const MUSKIE_SPECIES_ID = 'muskie';
 const CARP_LOCKED = require('../../assets/passport-carp/123.png');
 const CARP_UNLOCKED = require('../../assets/passport-carp/122.png');
 const CARP_SPECIES_ID = 'carp';
+
+/** Grass carp custom assets: grey = locked (181), color = unlocked (180) */
+const GRASSCARP_LOCKED = require('../../assets/passport-grass-carp/181.png');
+const GRASSCARP_UNLOCKED = require('../../assets/passport-grass-carp/180.png');
+const GRASSCARP_SPECIES_ID = 'grass-carp';
 
 /** White bass custom assets: grey = locked, color = unlocked */
 const WHITEBASS_LOCKED = require('../../assets/passport-white-bass/125.png');
@@ -280,6 +297,11 @@ const MANGROVESNAPPER_SPECIES_ID = 'mangrove-snapper';
 const YELLOWTAILSNAPPER_LOCKED = require('../../assets/passport-yellowtail-snapper/47.png');
 const YELLOWTAILSNAPPER_UNLOCKED = require('../../assets/passport-yellowtail-snapper/46.png');
 const YELLOWTAILSNAPPER_SPECIES_ID = 'yellowtail-snapper';
+
+/** Vermillion snapper custom assets: grey = locked (187), color = unlocked (186) */
+const VERMILLIONSNAPPER_LOCKED = require('../../assets/passport-vermillion-snapper/187.png');
+const VERMILLIONSNAPPER_UNLOCKED = require('../../assets/passport-vermillion-snapper/186.png');
+const VERMILLIONSNAPPER_SPECIES_ID = 'vermillion-snapper';
 
 /** Amberjack custom assets: grey = locked, color = unlocked */
 const AMBERJACK_LOCKED = require('../../assets/passport-amberjack/49.png');
@@ -471,6 +493,11 @@ const SNAKEHEAD_LOCKED = require('../../assets/passport-snakehead/165.png');
 const SNAKEHEAD_UNLOCKED = require('../../assets/passport-snakehead/164.png');
 const SNAKEHEAD_SPECIES_ID = 'snakehead';
 
+/** Clown knifefish custom assets: grey = locked (185), color = unlocked (184) */
+const CLOWNKNIFEFISH_LOCKED = require('../../assets/passport-clown-knifefish/185.png');
+const CLOWNKNIFEFISH_UNLOCKED = require('../../assets/passport-clown-knifefish/184.png');
+const CLOWNKNIFEFISH_SPECIES_ID = 'clown-knifefish';
+
 const ACCENT_BLUE = colors.brightBlue;
 /** Light grey for uncaught fish — same shape as real fish, replica silhouette */
 const LOCKED_FISH_GREY = '#A8A8A8';
@@ -560,6 +587,7 @@ function SpeciesStamp({
   const isBlackCrappie = species.id === BLACKCRAPPIE_SPECIES_ID;
   const isWhiteCrappie = species.id === WHITECRAPPIE_SPECIES_ID;
   const isBluegill = species.id === BLUEGILL_SPECIES_ID;
+  const isPumpkinseed = species.id === PUMPKINSEED_SPECIES_ID;
   const isChannelCatfish = species.id === CHANNELCATFISH_SPECIES_ID;
   const isFlatheadCatfish = species.id === FLATHEADCATFISH_SPECIES_ID;
   const isBlueCatfish = species.id === BLUECATFISH_SPECIES_ID;
@@ -568,8 +596,10 @@ function SpeciesStamp({
   const isRainbowTrout = species.id === RAINBOWTROUT_SPECIES_ID;
   const isBrownTrout = species.id === BROWNTROUT_SPECIES_ID;
   const isBrookTrout = species.id === BROOKTROUT_SPECIES_ID;
+  const isTigerTrout = species.id === TIGERTROUT_SPECIES_ID;
   const isMuskie = species.id === MUSKIE_SPECIES_ID;
   const isCarp = species.id === CARP_SPECIES_ID;
+  const isGrassCarp = species.id === GRASSCARP_SPECIES_ID;
   const isWhiteBass = species.id === WHITEBASS_SPECIES_ID;
   const isYellowPerch = species.id === YELLOWPERCH_SPECIES_ID;
   const isDrumFreshwater = species.id === DRUMFRESHWATER_SPECIES_ID;
@@ -590,6 +620,7 @@ function SpeciesStamp({
   const isRedSnapper = species.id === REDSNAPPER_SPECIES_ID;
   const isMangroveSnapper = species.id === MANGROVESNAPPER_SPECIES_ID;
   const isYellowtailSnapper = species.id === YELLOWTAILSNAPPER_SPECIES_ID;
+  const isVermillionSnapper = species.id === VERMILLIONSNAPPER_SPECIES_ID;
   const isAmberjack = species.id === AMBERJACK_SPECIES_ID;
   const isGrouper = species.id === GROUPER_SPECIES_ID;
   const isStripedBass = species.id === STRIPEDBASS_SPECIES_ID;
@@ -628,6 +659,7 @@ function SpeciesStamp({
   const isAmericanShad = species.id === AMERICANSHAD_SPECIES_ID;
   const isTilapia = species.id === TILAPIA_SPECIES_ID;
   const isSnakehead = species.id === SNAKEHEAD_SPECIES_ID;
+  const isClownKnifefish = species.id === CLOWNKNIFEFISH_SPECIES_ID;
 
   return (
     <TouchableOpacity
@@ -753,6 +785,12 @@ function SpeciesStamp({
             style={styles.stampImage}
             resizeMode="contain"
           />
+        ) : isPumpkinseed ? (
+          <Image
+            source={caught ? PUMPKINSEED_UNLOCKED : PUMPKINSEED_LOCKED}
+            style={styles.stampImage}
+            resizeMode="contain"
+          />
         ) : isChannelCatfish ? (
           <Image
             source={caught ? CHANNELCATFISH_UNLOCKED : CHANNELCATFISH_LOCKED}
@@ -801,6 +839,12 @@ function SpeciesStamp({
             style={styles.stampImage}
             resizeMode="contain"
           />
+        ) : isTigerTrout ? (
+          <Image
+            source={caught ? TIGERTROUT_UNLOCKED : TIGERTROUT_LOCKED}
+            style={styles.stampImage}
+            resizeMode="contain"
+          />
         ) : isMuskie ? (
           <Image
             source={caught ? MUSKIE_UNLOCKED : MUSKIE_LOCKED}
@@ -810,6 +854,12 @@ function SpeciesStamp({
         ) : isCarp ? (
           <Image
             source={caught ? CARP_UNLOCKED : CARP_LOCKED}
+            style={styles.stampImage}
+            resizeMode="contain"
+          />
+        ) : isGrassCarp ? (
+          <Image
+            source={caught ? GRASSCARP_UNLOCKED : GRASSCARP_LOCKED}
             style={styles.stampImage}
             resizeMode="contain"
           />
@@ -930,6 +980,12 @@ function SpeciesStamp({
         ) : isYellowtailSnapper ? (
           <Image
             source={caught ? YELLOWTAILSNAPPER_UNLOCKED : YELLOWTAILSNAPPER_LOCKED}
+            style={styles.stampImage}
+            resizeMode="contain"
+          />
+        ) : isVermillionSnapper ? (
+          <Image
+            source={caught ? VERMILLIONSNAPPER_UNLOCKED : VERMILLIONSNAPPER_LOCKED}
             style={styles.stampImage}
             resizeMode="contain"
           />
@@ -1161,6 +1217,12 @@ function SpeciesStamp({
             style={styles.stampImage}
             resizeMode="contain"
           />
+        ) : isClownKnifefish ? (
+          <Image
+            source={caught ? CLOWNKNIFEFISH_UNLOCKED : CLOWNKNIFEFISH_LOCKED}
+            style={styles.stampImage}
+            resizeMode="contain"
+          />
         ) : showCaughtImage ? (
           <Image
             source={typeof speciesImageUri === 'number' ? speciesImageUri : { uri: speciesImageUri }}
@@ -1234,6 +1296,13 @@ export default function PassportScreen() {
   const [selectedSpecies, setSelectedSpecies] = useState<{ id: string; name: string } | null>(null);
   const [speciesCatches, setSpeciesCatches] = useState<CatchRow[]>([]);
   const [catchesLoading, setCatchesLoading] = useState(false);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<TextInput>(null);
+  const [requestModalVisible, setRequestModalVisible] = useState(false);
+  const [requestInput, setRequestInput] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
 
   const loadCatchesForSpecies = useCallback(async (speciesId: string) => {
     if (!user?.id) {
@@ -1285,6 +1354,10 @@ export default function PassportScreen() {
   const currentList = baseList.filter((s) => {
     if (filterUnlocked && !caughtSpecies.has(s.id)) return false;
     if (filterRarity && s.rarity !== filterRarity) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      if (!s.name.toLowerCase().includes(q)) return false;
+    }
     return true;
   });
   const currentCaught = activeTab === 'saltwater' ? saltwaterCaught : freshwaterCaught;
@@ -1298,8 +1371,43 @@ export default function PassportScreen() {
           <SnaggedWordmark />
           <Text style={styles.subtitle} numberOfLines={1}>Fishing Passport</Text>
         </View>
-        <View style={styles.headerSpacer} />
+        <TouchableOpacity
+          style={styles.searchBtn}
+          onPress={() => {
+            setSearchVisible((v) => !v);
+            if (!searchVisible) {
+              setTimeout(() => searchInputRef.current?.focus(), 100);
+            } else {
+              setSearchQuery('');
+              Keyboard.dismiss();
+            }
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={searchVisible ? 'close' : 'search'}
+            size={22}
+            color={searchVisible ? colors.lightSubtext : colors.lightText}
+          />
+        </TouchableOpacity>
       </View>
+
+      {searchVisible && (
+        <View style={styles.searchRow}>
+          <TextInput
+            ref={searchInputRef}
+            style={styles.searchInput}
+            placeholder="Search for a fish..."
+            placeholderTextColor={colors.lightSubtext}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          <Ionicons name="search" size={20} color={colors.lightSubtext} style={styles.searchIcon} />
+        </View>
+      )}
 
       {/* Progress bars */}
       <View style={[styles.progressSection, cardShadow]}>
@@ -1446,8 +1554,95 @@ export default function PassportScreen() {
             />
           ))}
         </View>
+        {/* Request species section */}
+        <View style={styles.requestSection}>
+          <TouchableOpacity
+            style={styles.requestBtn}
+            onPress={() => {
+              setRequestModalVisible(true);
+              setRequestInput('');
+              setRequestError(null);
+            }}
+          >
+            <Feather name="plus-circle" size={20} color={ACCENT_BLUE} />
+            <Text style={styles.requestBtnText}>Request a fish species</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.requestedListLink}
+            onPress={() => router.push('/requested-species')}
+          >
+            <Text style={styles.requestedListLinkText}>View requested species</Text>
+            <Feather name="chevron-right" size={18} color={colors.lightSubtext} />
+          </TouchableOpacity>
+        </View>
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Modal: request species */}
+      <Modal
+        visible={requestModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setRequestModalVisible(false)}
+      >
+        <SafeAreaView style={styles.modalContainer} edges={['top']}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Request a fish species</Text>
+            <Text style={styles.modalSubtitle}>
+              Don&apos;t see a species? Request it and we&apos;ll consider adding it.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalCloseBtn}
+              onPress={() => setRequestModalVisible(false)}
+            >
+              <Feather name="x" size={24} color={colors.lightText} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.requestModalBody}>
+            <TextInput
+              style={styles.requestInput}
+              placeholder="e.g. Blue Marlin, Peacock Bass"
+              placeholderTextColor={colors.lightSubtext}
+              value={requestInput}
+              onChangeText={(t) => {
+                setRequestInput(t);
+                setRequestError(null);
+              }}
+              autoCapitalize="words"
+              editable={!requestSubmitting}
+            />
+            {requestError ? (
+              <Text style={styles.requestError}>{requestError}</Text>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.requestSubmitBtn, requestSubmitting && styles.requestSubmitDisabled]}
+              onPress={async () => {
+                if (!user?.id) {
+                  setRequestError('Sign in to request a species.');
+                  return;
+                }
+                setRequestSubmitting(true);
+                setRequestError(null);
+                const { success, error } = await insertSpeciesRequest(user.id, requestInput);
+                setRequestSubmitting(false);
+                if (success) {
+                  setRequestModalVisible(false);
+                  setRequestInput('');
+                } else {
+                  setRequestError(error ?? 'Failed to submit.');
+                }
+              }}
+              disabled={requestSubmitting || !requestInput.trim()}
+            >
+              {requestSubmitting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.requestSubmitText}>Submit request</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       {/* Modal: catches for selected species */}
       <Modal
@@ -1569,6 +1764,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerSpacer: { width: 40 },
+  searchBtn: {
+    padding: 8,
+    marginLeft: 8,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    backgroundColor: colors.lightCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.lightBorder,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingLeft: 44,
+    paddingRight: 16,
+    fontSize: 16,
+    color: colors.lightText,
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 14,
+  },
   progressSection: {
     backgroundColor: colors.lightCard,
     marginHorizontal: 16,
@@ -1674,6 +1896,66 @@ const styles = StyleSheet.create({
   gridContainer: {
     padding: 16,
     paddingBottom: 40,
+  },
+  requestSection: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    gap: 8,
+  },
+  requestBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  requestBtnText: {
+    fontSize: 15,
+    color: ACCENT_BLUE,
+    fontWeight: '600',
+  },
+  requestedListLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  requestedListLinkText: {
+    fontSize: 14,
+    color: colors.lightSubtext,
+  },
+  requestModalBody: {
+    padding: 16,
+    gap: 12,
+  },
+  requestInput: {
+    backgroundColor: colors.lightCard,
+    borderWidth: 1,
+    borderColor: colors.lightBorder,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: colors.lightText,
+  },
+  requestError: {
+    fontSize: 13,
+    color: '#EF4444',
+  },
+  requestSubmitBtn: {
+    backgroundColor: ACCENT_BLUE,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  requestSubmitDisabled: {
+    opacity: 0.6,
+  },
+  requestSubmitText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFF',
   },
   grid: {
     flexDirection: 'row',

@@ -10,6 +10,8 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
@@ -19,7 +21,78 @@ import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/utils/colors';
 import { useAuthContext } from '@/src/context/AuthContext';
-import { supabase } from '@/src/lib/supabase';
+import { supabase, parseSharedPostBody } from '@/src/lib/supabase';
+import { triggerSend } from '@/src/lib/feedback';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+
+const { width: CHAT_SCREEN_WIDTH } = Dimensions.get('window');
+const LIST_PADDING_H = 16;
+const SHARED_POST_PREVIEW_WIDTH = CHAT_SCREEN_WIDTH - LIST_PADDING_H * 2;
+const SHARED_POST_PREVIEW_ASPECT = 4 / 3;
+const SHARED_POST_PREVIEW_HEIGHT = Math.round(SHARED_POST_PREVIEW_WIDTH / SHARED_POST_PREVIEW_ASPECT);
+
+function isVideoUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const path = url.split('?')[0].toLowerCase();
+    return /\.(mp4|webm|mov)(\?|$)/i.test(path) || path.includes('/video/');
+  } catch {
+    return false;
+  }
+}
+
+function SharedPostPreviewImage({
+  photoUrl,
+  isVideo,
+  isMe,
+}: {
+  photoUrl: string;
+  isVideo?: boolean;
+  isMe: boolean;
+}) {
+  const [thumbnailUri, setThumbnailUri] = useState<string | null>(null);
+  const [thumbError, setThumbError] = useState(false);
+  const shouldLoadVideoThumb = isVideo || isVideoUrl(photoUrl);
+
+  useEffect(() => {
+    if (!shouldLoadVideoThumb || !photoUrl) return;
+    let cancelled = false;
+    VideoThumbnails.getThumbnailAsync(photoUrl, { time: 0 })
+      .then(({ uri }) => {
+        if (!cancelled) setThumbnailUri(uri);
+      })
+      .catch(() => {
+        if (!cancelled) setThumbError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldLoadVideoThumb, photoUrl]);
+
+  const displayUri = shouldLoadVideoThumb ? (thumbnailUri || (thumbError ? null : undefined)) : photoUrl;
+  const showPlaceholder = !displayUri;
+
+  return (
+    <View style={styles.sharedPostMediaWrap}>
+      {displayUri ? (
+        <Image source={{ uri: displayUri }} style={styles.sharedPostImage} resizeMode="cover" />
+      ) : (
+        <View style={[styles.sharedPostImage, styles.sharedPostImagePlaceholder]}>
+          {shouldLoadVideoThumb ? (
+            <Ionicons name="videocam-outline" size={32} color={colors.lightBorder} />
+          ) : (
+            <Ionicons name="fish" size={32} color={colors.lightBorder} />
+          )}
+        </View>
+      )}
+      {shouldLoadVideoThumb && displayUri ? (
+        <View style={styles.sharedPostPlayIcon} pointerEvents="none">
+          <Ionicons name="play-circle" size={44} color="rgba(255,255,255,0.9)" />
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 type Message = {
   id: string;
@@ -48,9 +121,13 @@ function conversationId(a: string, b: string): string {
 
 export default function ChatScreen() {
   const router = useRouter();
-  const { userId: otherUserId, displayName } = useLocalSearchParams<{ userId: string; displayName?: string }>();
+  const { userId: otherUserId, displayName, avatarUrl } = useLocalSearchParams<{ userId: string; displayName?: string; avatarUrl?: string }>();
   const { user } = useAuthContext();
   const myId = user?.id;
+
+  useEffect(() => {
+    if (!user?.id) router.replace('/(tabs)/profile');
+  }, [user?.id, router]);
 
   const name = displayName ?? 'Friend';
   const convId = myId && otherUserId ? conversationId(myId, otherUserId) : null;
@@ -87,9 +164,10 @@ export default function ChatScreen() {
     fetchMessages();
   }, [fetchMessages]);
 
-  // Realtime subscription
+  // Realtime subscription — must remove channel on unmount to prevent freeze
   useEffect(() => {
     if (!myId || !otherUserId) return;
+    let isMounted = true;
 
     const channel = supabase
       .channel(`chat-${convId}`)
@@ -102,6 +180,7 @@ export default function ChatScreen() {
           filter: `recipient_id=eq.${myId}`,
         },
         (payload) => {
+          if (!isMounted) return;
           const msg = payload.new as Message;
           if (msg.sender_id === otherUserId) {
             setMessages((prev) => [...prev, msg]);
@@ -112,6 +191,7 @@ export default function ChatScreen() {
       .subscribe();
 
     return () => {
+      isMounted = false;
       supabase.removeChannel(channel);
     };
   }, [myId, otherUserId, convId]);
@@ -126,6 +206,7 @@ export default function ChatScreen() {
   const handleSend = async () => {
     const text = inputText.trim();
     if (!text || !myId || !otherUserId || sending) return;
+    triggerSend();
     setSending(true);
     setInputText('');
 
@@ -169,6 +250,53 @@ export default function ChatScreen() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isMe = item.sender_id === myId;
+    const sharedPost = parseSharedPostBody(item.body);
+
+    if (sharedPost) {
+      return (
+        <View style={[styles.msgRow, styles.msgRowSharedPost]}>
+          <TouchableOpacity
+            style={[styles.sharedPostBubble, isMe ? styles.sharedPostBubbleMe : styles.sharedPostBubbleThem]}
+            onPress={() => router.push(`/(tabs)/?postId=${encodeURIComponent(sharedPost.postId)}`)}
+            activeOpacity={0.85}
+          >
+            {sharedPost.photoUrl ? (
+              <SharedPostPreviewImage
+                photoUrl={sharedPost.photoUrl}
+                isVideo={sharedPost.isVideo}
+                isMe={isMe}
+              />
+            ) : (
+              <View style={[styles.sharedPostMediaWrap, styles.sharedPostImagePlaceholder]}>
+                <View style={[styles.sharedPostImage, styles.sharedPostImagePlaceholder]}>
+                  <Ionicons name="fish" size={32} color={colors.lightBorder} />
+                </View>
+              </View>
+            )}
+            <View style={styles.sharedPostContent}>
+              <Text style={[styles.sharedPostSpecies, isMe && styles.sharedPostTextMe]} numberOfLines={1}>
+                {sharedPost.species}
+              </Text>
+              {sharedPost.weight ? (
+                <Text style={[styles.sharedPostMeta, isMe && styles.sharedPostTextMe]} numberOfLines={1}>
+                  {sharedPost.weight} lbs
+                </Text>
+              ) : null}
+              {sharedPost.caption ? (
+                <Text style={[styles.sharedPostCaption, isMe && styles.sharedPostTextMe]} numberOfLines={2}>
+                  {sharedPost.caption}
+                </Text>
+              ) : null}
+              <Text style={[styles.sharedPostTap, isMe && styles.sharedPostTapMe]}>Tap to view post</Text>
+            </View>
+            <Text style={[styles.bubbleTime, isMe && styles.bubbleTimeMe, styles.sharedPostTime]}>
+              {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.msgRow, isMe && styles.msgRowMe]}>
         <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
@@ -188,10 +316,14 @@ export default function ChatScreen() {
       <View style={styles.header}>
         <SnaggedWordmark />
         <View style={styles.headerCenter}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarInitial}>{name.charAt(0).toUpperCase()}</Text>
-          </View>
-          <Text style={styles.headerTitle}>{name}</Text>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.headerAvatar} />
+          ) : (
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarInitial}>{name.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <Text style={styles.headerTitle} numberOfLines={1}>{name}</Text>
         </View>
       </View>
 
@@ -271,6 +403,11 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 4 },
+  headerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
   avatarCircle: {
     width: 36,
     height: 36,
@@ -287,6 +424,7 @@ const styles = StyleSheet.create({
   list: { paddingVertical: 12, paddingHorizontal: 16, gap: 6 },
   msgRow: { flexDirection: 'row', marginBottom: 4 },
   msgRowMe: { justifyContent: 'flex-end' },
+  msgRowSharedPost: { alignItems: 'stretch', width: '100%' },
   bubble: {
     maxWidth: '78%',
     paddingHorizontal: 14,
@@ -307,6 +445,57 @@ const styles = StyleSheet.create({
   bubbleTextMe: { color: '#FFF' },
   bubbleTime: { fontSize: 10, color: colors.lightSubtext, alignSelf: 'flex-end' },
   bubbleTimeMe: { color: 'rgba(255,255,255,0.65)' },
+  sharedPostBubble: {
+    width: '100%',
+    maxWidth: SHARED_POST_PREVIEW_WIDTH,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    padding: 0,
+    borderRadius: 14,
+    backgroundColor: colors.lightCard,
+    borderWidth: 1,
+    borderColor: colors.lightBorder,
+    overflow: 'hidden',
+  },
+  sharedPostBubbleMe: {
+    backgroundColor: colors.accentBlue + '22',
+    borderColor: colors.accentBlue + '55',
+    borderBottomRightRadius: 4,
+  },
+  sharedPostBubbleThem: { borderBottomLeftRadius: 4 },
+  sharedPostMediaWrap: {
+    width: '100%',
+    aspectRatio: SHARED_POST_PREVIEW_ASPECT,
+    backgroundColor: colors.lightBorder + '40',
+    borderTopLeftRadius: 13,
+    borderTopRightRadius: 13,
+    position: 'relative',
+  },
+  sharedPostImage: {
+    width: '100%',
+    height: '100%',
+    borderTopLeftRadius: 13,
+    borderTopRightRadius: 13,
+    backgroundColor: colors.lightBorder + '40',
+  },
+  sharedPostImagePlaceholder: { justifyContent: 'center', alignItems: 'center' },
+  sharedPostPlayIcon: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sharedPostContent: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  sharedPostSpecies: { fontSize: 15, fontWeight: '700', color: colors.lightText },
+  sharedPostTextMe: { color: '#FFFFFF' },
+  sharedPostMeta: { fontSize: 13, color: colors.subtext },
+  sharedPostCaption: { fontSize: 12, color: colors.subtext, lineHeight: 16 },
+  sharedPostTap: { fontSize: 11, color: colors.accentBlue, marginTop: 4 },
+  sharedPostTapMe: { color: 'rgba(255,255,255,0.95)' },
+  sharedPostTime: { marginTop: 2, paddingHorizontal: 10, paddingBottom: 6 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',

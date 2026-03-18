@@ -12,18 +12,20 @@ import {
   Dimensions,
   Platform,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
 import { CARD_RADIUS } from '@/src/constants/styles';
 import { useHomeTournaments } from '@/src/hooks/useHomeTournaments';
-import { useLocationPermission } from '@/src/hooks/useLocationPermission';
+import { useLocationState } from '@/src/hooks/useLocationState';
 import { useBottomSafePadding } from '@/src/components/ScreenContainer';
 import {
   fetchTournamentEntries,
@@ -32,28 +34,35 @@ import {
   countUserTournamentEntries,
   voteOnEntry,
 } from '@/src/api/tournaments';
-import { mockUserProfile } from '@/utils/mockData';
 import { useAuthContext } from '@/src/context/AuthContext';
+import { usePresentPaywall } from '@/src/hooks/usePresentPaywall';
 import type { Tournament, FishEntry } from '@/src/types/tournaments';
 import { getEntryMetricValue, formatMetric } from '@/src/types/tournaments';
 import { LeaderboardRow } from '@/src/components/home/LeaderboardRow';
 import { GlobalLocalToggle } from '@/src/components/competitions/GlobalLocalToggle';
+import { TournamentsAboutModal } from '@/src/components/competitions/TournamentsAboutModal';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
 import { TournamentEntryFlow } from '@/src/components/competitions/TournamentEntryFlow';
+import { isDev } from '@/src/lib/env';
+import { forceRestartTournament, getProfileDisplayItemsBatch } from '@/src/lib/supabase';
+import { deleteTournamentEntryByEntryId } from '@/src/lib/tournamentDb';
+import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
+import { ENABLE_MOCK_USERS, getMockTournamentEntries } from '@/utils/mockLeaderboardData';
 
 const TEAL = colors.teal;
 const ACCENT_BLUE = TEAL;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const FILTER_IDS: { id: string; label: string }[] = [
-  { id: 'biggest-fish-this-week', label: 'Biggest Fish' },
+  { id: 'biggest-fish-this-week', label: 'Biggest Fish Overall' },
   { id: 'tournament-redfish', label: 'Redfish' },
   { id: 'tournament-bass', label: 'Bass' },
   { id: 'tournament-snook', label: 'Snook' },
   { id: 'tournament-flounder', label: 'Flounder' },
   { id: 'tournament-striper', label: 'Striper' },
   { id: 'tournament-tarpon', label: 'Tarpon' },
-  { id: 'tournament-smallest', label: 'Smallest' },
+  { id: 'tournament-freshwater-trout', label: 'Freshwater Trout' },
+  { id: 'tournament-smallest', label: 'Smallest Fish' },
 ];
 
 const FEATURED_IDS = [
@@ -64,25 +73,37 @@ const FEATURED_IDS = [
   'tournament-flounder',
   'tournament-striper',
   'tournament-tarpon',
+  'tournament-freshwater-trout',
   'tournament-smallest',
 ];
+
+const SELECTED_TOURNAMENT_KEY = '@Snagged/selectedTournamentId';
 
 export default function TournamentsScreen() {
   const router = useRouter();
   const { user } = useAuthContext();
+  const { presentPaywall } = usePresentPaywall();
   const { tournamentId: deepLinkId } = useLocalSearchParams<{ tournamentId?: string }>();
   const insets = useSafeAreaInsets();
   const topPadding = Math.max(4, insets.top - 4);
   const [scope, setScope] = useState<'global' | 'local'>('global');
   const bottomPadding = useBottomSafePadding();
-  const { ensurePermission } = useLocationPermission();
-  // If opened from the "Ending Soon" banner, start on that tournament; otherwise default to first
-  const [featuredCompetitionId, setFeaturedCompetitionId] = useState(
+  const { state: locationState, fetchStateFromLocation } = useLocationState();
+  const [featuredCompetitionId, setFeaturedCompetitionIdState] = useState(
     deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : FEATURED_IDS[0]
   );
+  const hasRestoredSelection = useRef(false);
+
+  const setFeaturedCompetitionId = useCallback((id: string) => {
+    setFeaturedCompetitionIdState(id);
+    AsyncStorage.setItem(SELECTED_TOURNAMENT_KEY, id).catch(() => {});
+  }, []);
   const [entries, setEntries] = useState<FishEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [arrowVisible, setArrowVisible] = useState(true);
+  const [restartingCycle, setRestartingCycle] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [pullRefreshing, setPullRefreshing] = useState(false);
   const arrowOpacity = useRef(new Animated.Value(1)).current;
 
   const handleFilterScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -99,7 +120,30 @@ export default function TournamentsScreen() {
     }
   };
 
-  const { tournaments, userFish, voteLoading, handleVote } = useHomeTournaments(scope, user?.id);
+  const stateForLocal = scope === 'local' ? (locationState ?? user?.state ?? undefined) : undefined;
+  const { tournaments, userFish, voteLoading, handleVote, handleRefresh, loading: tournamentsLoading } = useHomeTournaments(scope, user?.id, stateForLocal);
+  const winCheck = useTournamentWinCheckContext();
+
+  // Restore last selected tournament on mount (so reload doesn't always show first)
+  useEffect(() => {
+    if (hasRestoredSelection.current) return;
+    if (deepLinkId && FEATURED_IDS.includes(deepLinkId)) return;
+    hasRestoredSelection.current = true;
+    AsyncStorage.getItem(SELECTED_TOURNAMENT_KEY).then((saved) => {
+      if (saved && FEATURED_IDS.includes(saved)) {
+        setFeaturedCompetitionIdState(saved);
+      }
+    }).catch(() => {});
+  }, [deepLinkId]);
+
+  // When tournaments load, if current selection isn't in the list, pick first available
+  useEffect(() => {
+    if (tournaments.length === 0) return;
+    const ids = new Set(tournaments.map((t) => t.id));
+    if (ids.has(featuredCompetitionId)) return;
+    const first = tournaments[0]?.id ?? FEATURED_IDS[0];
+    setFeaturedCompetitionIdState(first);
+  }, [tournaments, featuredCompetitionId]);
 
   // Sync when navigated here from the banner with a specific tournament
   useEffect(() => {
@@ -109,32 +153,42 @@ export default function TournamentsScreen() {
   }, [deepLinkId]);
 
   const featuredTournament = tournaments.find((t) => t.id === featuredCompetitionId);
+  const currentUserId = user?.id ?? null;
 
-  const currentUserId = user?.id ?? (mockUserProfile as { id?: string }).id ?? null;
-  const userState = (mockUserProfile as { state?: string }).state;
   const loadEntries = useCallback(async () => {
     setLoading(true);
     try {
-      const userStateForLocal = scope === 'local' ? userState : undefined;
+      const userStateForLocal = scope === 'local' ? (locationState ?? user?.state ?? undefined) : undefined;
       const { entries: list } = await fetchTournamentEntries(
         featuredCompetitionId,
         0,
-        20,
+        200,
         scope,
         userStateForLocal,
         currentUserId
       );
-      setEntries(list);
+      const authorIds = [...new Set(list.map((e) => e.userId))];
+      const displayMap = await getProfileDisplayItemsBatch(authorIds);
+      let enriched = list.map((e) => ({
+        ...e,
+        displayItems: displayMap[e.userId] ?? [],
+      }));
+      if (isDev && ENABLE_MOCK_USERS && featuredCompetitionId) {
+        const metricType = featuredTournament?.metricType === 'LENGTH_IN' ? 'LENGTH_IN' : 'WEIGHT_LBS';
+        const mockEntries = getMockTournamentEntries(featuredCompetitionId, metricType);
+        enriched = [...enriched, ...mockEntries];
+      }
+      setEntries(enriched);
     } finally {
       setLoading(false);
     }
-  }, [featuredCompetitionId, scope, userState, currentUserId]);
+  }, [featuredCompetitionId, scope, locationState, user?.state, currentUserId]);
 
   const [voteLoadingEntryId, setVoteLoadingEntryId] = useState<string | null>(null);
   const handleVoteGated = useCallback(
     async (entryId: string, vote: 'UP' | 'DOWN' | null) => {
       if (!currentUserId) {
-        Alert.alert('Sign in to vote', 'Please sign in to vote on entries.');
+        router.replace('/(tabs)/profile');
         return;
       }
       const entry = entries.find((e) => e.id === entryId);
@@ -174,21 +228,36 @@ export default function TournamentsScreen() {
         setVoteLoadingEntryId(null);
       }
     },
-    [entries, currentUserId]
+    [entries, currentUserId, router]
   );
 
+  // Load entries only when user switches tournament, scope, or location (no refetch on tournaments list updates)
   useEffect(() => {
     loadEntries();
   }, [loadEntries]);
 
+  const onPullRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await Promise.all([handleRefresh(), loadEntries()]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [handleRefresh, loadEntries]);
+
+  // When user focuses Tournaments tab, run win check and ensure tournaments are loaded (fixes first-click times not showing)
+  useFocusEffect(
+    useCallback(() => {
+      winCheck?.triggerCheck();
+      if (tournaments.length === 0) handleRefresh();
+    }, [winCheck, tournaments.length, handleRefresh])
+  );
+
   const handleScopeChange = async (v: 'global' | 'local') => {
-    if (v === 'local') {
-      const granted = await ensurePermission();
-      if (!granted) return;
+    if (v === 'local' && !locationState) {
+      await fetchStateFromLocation();
     }
     setScope(v);
-    // TODO: Backend - fetchFeaturedCompetition(mode) and fetchCompetitionPreviews(mode)
-    // when API supports global vs local. Client-side filter for now.
   };
 
   const getMetricLabel = (metricType: string) => {
@@ -198,33 +267,27 @@ export default function TournamentsScreen() {
     return 'score';
   };
 
-  const currentUsername =
-    (user as { username?: string } | null)?.username ??
-    (mockUserProfile as { username?: string }).username ??
-    'You';
-  const currentAvatarUrl =
-    (user as { avatarUrl?: string } | null)?.avatarUrl ??
-    (mockUserProfile as { avatar?: string }).avatar ??
-    undefined;
+  const currentUsername = (user as { username?: string } | null)?.username ?? 'You';
+  const currentAvatarUrl = (user as { avatarUrl?: string } | null)?.avatarUrl;
 
   // Track entry status as state so button updates immediately after entering
   const [isEntered, setIsEntered] = useState(false);
 
-  // Sync isEntered from Supabase whenever tournament or user changes
+  // Sync isEntered when tournament or user changes (not on every entries update)
   useEffect(() => {
     if (!currentUserId) {
       setIsEntered(false);
       return;
     }
     isUserEnteredInTournament(featuredCompetitionId, currentUserId).then(setIsEntered);
-  }, [featuredCompetitionId, currentUserId, entries]);
+  }, [featuredCompetitionId, currentUserId]);
 
   // Entry flow modal
   const [showEntryFlow, setShowEntryFlow] = useState(false);
 
   const handleEnterTournament = useCallback(async () => {
     if (!currentUserId) {
-      Alert.alert('Sign in required', 'Please sign in to enter a tournament.');
+      router.replace('/(tabs)/profile');
       return;
     }
     if (isEntered) {
@@ -238,13 +301,17 @@ export default function TournamentsScreen() {
       if (count >= 1) {
         Alert.alert(
           'One tournament at a time',
-          'Free accounts can only enter one tournament. Delete your current entry to enter another, or upgrade to Pro for unlimited entries.'
+          'Free accounts can only enter one tournament. Delete your current entry to enter another, or upgrade to Pro for unlimited entries.',
+          [
+            { text: 'OK', style: 'cancel' },
+            { text: 'Upgrade', onPress: () => presentPaywall() },
+          ]
         );
         return;
       }
     }
     setShowEntryFlow(true);
-  }, [currentUserId, isEntered, user?.subscriptionPlan]);
+  }, [currentUserId, isEntered, user?.subscriptionPlan, presentPaywall]);
 
   const handleEntryFlowDone = useCallback(async () => {
     setShowEntryFlow(false);
@@ -280,6 +347,24 @@ export default function TournamentsScreen() {
     );
   }, [featuredCompetitionId, currentUserId, loadEntries]);
 
+  const handleRemoveEntry = useCallback(
+    async (entryId: string) => {
+      if (entryId.startsWith('mock-entry-')) {
+        setEntries((prev) => prev.filter((e) => e.id !== entryId));
+        return;
+      }
+      try {
+        await deleteTournamentEntryByEntryId(entryId);
+        await loadEntries();
+      } catch (e) {
+        console.error('[Tournaments] remove entry failed:', e);
+      }
+    },
+    [loadEntries]
+  );
+
+  const showRemoveEntry = isDev || user?.isModerator === true;
+
   const top3 = entries.slice(0, 3);
   const restEntries = entries.slice(3);
   const leadValue = top3[0] ? getEntryMetricValue(top3[0], featuredTournament?.metricType ?? 'WEIGHT_LBS') : undefined;
@@ -293,20 +378,52 @@ export default function TournamentsScreen() {
         style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, { paddingTop: topPadding, paddingBottom: bottomPadding }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={pullRefreshing}
+            onRefresh={onPullRefresh}
+            tintColor={TEAL}
+          />
+        }
       >
-        {/* Header — Snagged on top, tournament title below */}
+        {/* Header — Snagged on top, tournament title + About */}
         <View style={styles.header}>
-          <SnaggedWordmark />
+          <View style={styles.headerTopRow}>
+            <SnaggedWordmark />
+            <TouchableOpacity style={styles.aboutBtn} onPress={() => setShowAboutModal(true)}>
+              <Text style={styles.aboutBtnText}>About</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.title} numberOfLines={1}>
-            {featuredTournament?.id === 'biggest-fish-this-week' ? 'BIGGEST FISH' : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
+            {featuredTournament?.id === 'biggest-fish-this-week' ? 'BIGGEST FISH OVERALL' : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
           </Text>
         </View>
 
-        {/* Global / Local — entries sync to both */}
+        {/* Global / Local */}
         <View style={styles.toggleWrap}>
-          <GlobalLocalToggle value={scope} onChange={handleScopeChange} dark />
+          <View style={styles.toggleRow}>
+            <GlobalLocalToggle value={scope} onChange={handleScopeChange} dark />
+          </View>
+          <View style={styles.viewLeaderboardWrap}>
+            <TouchableOpacity
+              style={styles.viewLeaderboardBtn}
+              onPress={() => router.push('/(tabs)/leaderboard')}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#FFD700', '#FFA500', '#FF8C00']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.viewLeaderboardGradient}
+              >
+                <Text style={styles.viewLeaderboardText}>🏆 View Leaderboard</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.syncHint}>Entries sync to both</Text>
         </View>
+
+        <TournamentsAboutModal visible={showAboutModal} onClose={() => setShowAboutModal(false)} />
 
         {/* Secondary filters — species + sort */}
         <View style={styles.filtersWrap}>
@@ -347,10 +464,45 @@ export default function TournamentsScreen() {
 
         {/* Featured Competition — countdown */}
         <View style={styles.headerBadgeRow}>
-          {featuredTournament?.endsAt && (
-            <TournamentCountdown endsAt={featuredTournament.endsAt} compact onDark />
-          )}
+          {featuredTournament?.endsAt ? (
+            <TournamentCountdown
+              endsAt={featuredTournament.endsAt}
+              compact
+              onDark
+              onEnded={winCheck?.triggerCheck}
+            />
+          ) : tournamentsLoading && tournaments.length === 0 ? (
+            <Text style={styles.countdownPlaceholder}>Loading…</Text>
+          ) : null}
         </View>
+
+        {/* Dev: 20-sec test cycle for Biggest Fish — visible on Tournaments tab when Biggest Fish selected */}
+        {isDev && featuredCompetitionId === 'biggest-fish-this-week' && (
+          <View style={styles.devCycleRow}>
+            <TouchableOpacity
+              style={styles.devCycleBtn}
+              onPress={async () => {
+                setRestartingCycle(true);
+                try {
+                  const res = await forceRestartTournament('biggest_fish', 10, 20);
+                  if (res.ok) {
+                    await handleRefresh();
+                    loadEntries();
+                  } else {
+                    Alert.alert('Dev', res.error ?? 'Failed');
+                  }
+                } finally {
+                  setRestartingCycle(false);
+                }
+              }}
+              disabled={restartingCycle}
+            >
+              <Text style={styles.devCycleBtnText}>
+                {restartingCycle ? '…' : 'Start 20 sec test cycle (dev)'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Stats banner — 3-column */}
         <LinearGradient
@@ -412,7 +564,8 @@ export default function TournamentsScreen() {
               </TouchableOpacity>
             )}
           </View>
-          <Text style={styles.votingRulesText}>👍 Verify size  ·  👎 50%+ votes = removal</Text>
+          <Text style={styles.votingRulesText}>👍 Verify size  ·  👎 50%+ votes = may be removed</Text>
+          <Text style={styles.votingRulesWarning}>Obviously fake entries will result in a ban from tournaments.</Text>
         </View>
 
         {/* Leaderboard — podium (2nd left, 1st center, 3rd right) + rest of leaderboard */}
@@ -436,6 +589,7 @@ export default function TournamentsScreen() {
                     voteLoading={voteLoadingEntryId}
                     variant="hero"
                     isYou={currentUserId != null && top3[1].userId === currentUserId}
+                    onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
                   />
                 ) : (
                   <View style={[styles.podiumEmpty, { aspectRatio: 9 / 16 }]}>
@@ -454,6 +608,7 @@ export default function TournamentsScreen() {
                     voteLoading={voteLoadingEntryId}
                     variant="hero"
                     isYou={currentUserId != null && top3[0].userId === currentUserId}
+                    onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
                   />
                 ) : (
                   <View style={[styles.podiumEmpty, { aspectRatio: 9 / 16 }]}>
@@ -472,6 +627,7 @@ export default function TournamentsScreen() {
                     voteLoading={voteLoadingEntryId}
                     variant="hero"
                     isYou={currentUserId != null && top3[2].userId === currentUserId}
+                    onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
                   />
                 ) : (
                   <View style={[styles.podiumEmpty, { aspectRatio: 9 / 16 }]}>
@@ -495,6 +651,7 @@ export default function TournamentsScreen() {
                       onVote={handleVoteGated}
                       voteLoading={voteLoadingEntryId}
                       variant="restCard"
+                      onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
                     />
                   </View>
                 ))}
@@ -587,8 +744,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   restGridCell: {
-    width: '48%',
-    minWidth: '48%',
+    flex: 1,
+    flexBasis: '47%',
+    minWidth: 0,
   },
   podiumEmpty: {
     backgroundColor: 'rgba(7,30,48,0.6)',
@@ -616,6 +774,25 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
     gap: 4,
   },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  aboutBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,229,200,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,200,0.25)',
+  },
+  aboutBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.teal,
+  },
   title: {
     fontFamily: 'Orbitron_900Black',
     fontSize: 20,
@@ -632,6 +809,38 @@ const styles = StyleSheet.create({
   },
   toggleWrap: {
     marginBottom: 8,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewLeaderboardWrap: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  viewLeaderboardBtn: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#FFD700',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 8,
+      },
+      android: { elevation: 6 },
+    }),
+  },
+  viewLeaderboardGradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+  },
+  viewLeaderboardText: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#1a1000',
+    letterSpacing: 0.5,
   },
   syncHint: {
     fontSize: 11,
@@ -685,6 +894,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginBottom: 8,
+  },
+  countdownPlaceholder: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  devCycleRow: {
+    marginBottom: 8,
+  },
+  devCycleBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,184,0,0.25)',
+    alignSelf: 'flex-start',
+  },
+  devCycleBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#b8860b',
   },
   statsBanner: {
     borderRadius: 14,
@@ -779,6 +1009,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: colors.textDim,
+  },
+  votingRulesWarning: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#c62828',
+    marginTop: 4,
   },
   enterTournamentBtn: {
     borderRadius: 10,

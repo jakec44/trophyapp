@@ -1,7 +1,7 @@
 /**
- * ProfileBadges
- * Shows tournament placement badges on the user's profile.
- * Each chip is tappable and opens the TournamentWinScreen for that result.
+ * ProfileBadges (Trophies)
+ * Shows tournament placement trophies on the user's profile (gold/silver/bronze).
+ * Each chip is tappable and shows how the trophy was earned.
  */
 
 import { useState } from 'react';
@@ -42,10 +42,7 @@ function BadgeChip({
       onPress={onPress}
       activeOpacity={0.82}
     >
-      {/* Metallic background */}
-      <View style={[styles.chipBg, { backgroundColor: palette.glow }]} />
-
-      {/* Medal */}
+      {/* Gold / silver / bronze trophy by place */}
       <Text style={styles.chipMedal}>{palette.medal}</Text>
 
       {/* Text */}
@@ -71,7 +68,7 @@ export function ProfileBadges({ results, username, avatarUrl, onViewLeaderboard 
     <View style={styles.section}>
       <View style={styles.titleRow}>
         <Ionicons name="trophy" size={16} color={colors.gold} />
-        <Text style={styles.sectionTitle}>Badges</Text>
+        <Text style={styles.sectionTitle}>Trophies</Text>
         <Text style={styles.sectionCount}>{results.length}</Text>
       </View>
 
@@ -110,6 +107,10 @@ const styles = StyleSheet.create({
   section: {
     marginBottom: 12,
   },
+  sectionFullWidth: {
+    marginRight: -12,
+    paddingRight: 12,
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -146,12 +147,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     backgroundColor: '#080e1a',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  chipBg: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.25,
   },
   chipMedal: {
     fontSize: 26,

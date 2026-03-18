@@ -16,6 +16,9 @@ Run `schema.sql` first to create tables (profiles, catches, etc.).
 | 4 | `supabase/migrations/20260224100000_clean_backbone.sql` | RLS, handle_new_user, upload_status |
 | 5 | `supabase/migrations/20260224100001_storage_backbone.sql` | avatars, catch-photos buckets |
 | 6 | `supabase/migrations/20260225000000_add_banners_and_catches_buckets.sql` | **banners, catches buckets + policies** |
+| 7 | `supabase/migrations/20260303100000_trophy_badges.sql` | **Trophy badges** (trophy_badges table, claim_tournament_win, set_trophy_shown, rewards) |
+
+**Or apply all at once:** from project root run `npm run supabase:push` (or `npx supabase db push`) to apply every migration in `supabase/migrations/` in filename order.
 
 ## 3. Dashboard checks
 

@@ -20,6 +20,7 @@ const WEIGHT_SPECIES = new Set([
   'striped bass',
   'spotted bass',
   'black bass',
+  'tarpon',
 ]);
 
 /**

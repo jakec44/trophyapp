@@ -11,9 +11,11 @@ import {
   Animated,
   Easing,
   Platform,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { UserLink } from '@/src/components/profile/UserLink';
+import type { ProfileDisplayItem } from '@/src/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
@@ -107,6 +109,8 @@ interface LeaderboardRowProps {
   disableVote?: boolean;
   /** Stagger delay (ms) for entrance animation */
   animationDelay?: number;
+  /** When set (e.g. for moderators), show remove-entry button; callback receives entry.id */
+  onRemoveEntry?: (entryId: string) => void;
 }
 
 export function LeaderboardRow({
@@ -121,6 +125,7 @@ export function LeaderboardRow({
   isYou = false,
   disableVote = false,
   animationDelay = 0,
+  onRemoveEntry,
 }: LeaderboardRowProps) {
   const router = useRouter();
   const [avatarError, setAvatarError] = useState(false);
@@ -140,6 +145,18 @@ export function LeaderboardRow({
 
   const handleFishThumbPress = () => {
     setCatchModalVisible(true);
+  };
+
+  const handleRemoveEntry = () => {
+    if (!onRemoveEntry) return;
+    Alert.alert(
+      'Remove entry',
+      'Remove this entry from the tournament? The user can enter again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => onRemoveEntry(entry.id) },
+      ]
+    );
   };
 
   const formatDate = (iso: string) => {
@@ -312,16 +329,32 @@ export function LeaderboardRow({
                       {AvatarOrPlaceholder}
                     </View>
                     <View style={styles.tournamentCardUserText}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        <Text style={styles.tournamentCardUsername} numberOfLines={1}>{displayLabel}</Text>
-                        {entry.proVerified && <Ionicons name="checkmark-circle" size={14} color="#3B82F6" />}
-                      </View>
+                      <Text style={styles.tournamentCardUsername} numberOfLines={1} ellipsizeMode="tail">
+                        {displayLabel}
+                      </Text>
+                      {(entry.authorLevel != null || entry.authorAnglerRating != null) && (
+                        <View style={styles.levelArRow}>
+                          {entry.authorLevel != null && <Text style={styles.tournamentCardLevelAr}>Lv {entry.authorLevel}</Text>}
+                          {entry.authorLevel != null && entry.authorAnglerRating != null && <Text style={styles.tournamentCardLevelAr}> · </Text>}
+                          {entry.authorAnglerRating != null && (
+                            <View style={styles.trophyWrap}>
+                              <Ionicons name="trophy" size={12} color={colors.gold} />
+                              <Text style={styles.tournamentCardLevelAr}>{entry.authorAnglerRating}</Text>
+                            </View>
+                          )}
+                        </View>
+                      )}
                       <Text style={styles.tournamentCardEntryTime}>{formatRelativeTime(entry.createdAt)}</Text>
                     </View>
                   </TouchableOpacity>
                   <View style={styles.tournamentCardRankWrap}>
                     {RankDisplay}
                   </View>
+                  {onRemoveEntry ? (
+                    <TouchableOpacity onPress={handleRemoveEntry} hitSlop={8} style={styles.removeEntryBtn}>
+                      <Ionicons name="trash-outline" size={18} color={colors.lightSubtext} />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -402,16 +435,32 @@ export function LeaderboardRow({
                   </View>
                 )}
                 <View style={styles.restCardUserText}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                    <Text style={styles.restCardUsername} numberOfLines={1} ellipsizeMode="tail">{displayLabel}</Text>
-                    {entry.proVerified && <Ionicons name="checkmark-circle" size={14} color="#3B82F6" />}
-                  </View>
+                  <Text style={styles.restCardUsername} numberOfLines={1} ellipsizeMode="tail">
+                    {displayLabel}
+                  </Text>
+                  {(entry.authorLevel != null || entry.authorAnglerRating != null) && (
+                    <View style={styles.levelArRow}>
+                      {entry.authorLevel != null && <Text style={styles.restCardLevelAr}>Lv {entry.authorLevel}</Text>}
+                      {entry.authorLevel != null && entry.authorAnglerRating != null && <Text style={styles.restCardLevelAr}> · </Text>}
+                      {entry.authorAnglerRating != null && (
+                        <View style={styles.trophyWrap}>
+                          <Ionicons name="trophy" size={12} color={colors.gold} />
+                          <Text style={styles.restCardLevelAr}>{entry.authorAnglerRating}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                   <Text style={styles.restCardEntryTime} numberOfLines={1}>{formatRelativeTime(entry.createdAt)}</Text>
                 </View>
               </TouchableOpacity>
               <View style={styles.restCardRankWrap}>
                 {RankDisplay}
               </View>
+              {onRemoveEntry ? (
+                <TouchableOpacity onPress={handleRemoveEntry} hitSlop={8} style={styles.removeEntryBtn}>
+                  <Ionicons name="trash-outline" size={18} color={colors.lightSubtext} />
+                </TouchableOpacity>
+              ) : null}
             </View>
 
             {/* Fish photo — compact 4:5 for smaller cards */}
@@ -576,6 +625,12 @@ export function LeaderboardRow({
               </Text>
             </Animated.View>
 
+            {onRemoveEntry ? (
+              <TouchableOpacity onPress={handleRemoveEntry} hitSlop={8} style={[styles.removeEntryBtn, styles.removeEntryBtnHero]}>
+                <Ionicons name="trash-outline" size={18} color={colors.lightSubtext} />
+              </TouchableOpacity>
+            ) : null}
+
             {/* Bottom: user info + votes */}
             <View style={styles.heroPodBottom} pointerEvents="box-none">
               <TouchableOpacity
@@ -600,6 +655,18 @@ export function LeaderboardRow({
                   <Text style={styles.heroPodName} numberOfLines={1} ellipsizeMode="tail">
                     {displayLabel}
                   </Text>
+                  {(entry.authorLevel != null || entry.authorAnglerRating != null) && (
+                    <View style={styles.levelArRow}>
+                      {entry.authorLevel != null && <Text style={[styles.heroPodLevelAr, { color: wtCol }]}>Lv {entry.authorLevel}</Text>}
+                      {entry.authorLevel != null && entry.authorAnglerRating != null && <Text style={[styles.heroPodLevelAr, { color: wtCol }]}> · </Text>}
+                      {entry.authorAnglerRating != null && (
+                        <View style={styles.trophyWrap}>
+                          <Ionicons name="trophy" size={12} color={wtCol} />
+                          <Text style={[styles.heroPodLevelAr, { color: wtCol }]}>{entry.authorAnglerRating}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
                   <Text style={[styles.heroPodWeight, { color: wtCol }]}>
                     {weightDisplay} {metricUnit}
                   </Text>
@@ -673,6 +740,7 @@ export function LeaderboardRow({
         <UserLink
           userId={entry.userId}
           username={displayLabel}
+          displayItems={(entry.displayItems ?? []) as ProfileDisplayItem[]}
           proVerified={entry.proVerified}
           avatarUrl={entry.avatarUrl}
           onPressOverride={handleProfilePress}
@@ -699,6 +767,11 @@ export function LeaderboardRow({
             dark={isHero}
           />
         </View>
+        {onRemoveEntry && (
+          <TouchableOpacity onPress={handleRemoveEntry} hitSlop={8} style={styles.removeEntryBtn}>
+            <Ionicons name="trash-outline" size={18} color={colors.lightSubtext} />
+          </TouchableOpacity>
+        )}
       </View>
 
       <Modal
@@ -760,9 +833,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   rowMicro: {
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    minHeight: 56,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    minHeight: 52,
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   rowHero: {
     paddingVertical: 12,
@@ -821,6 +898,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#ffffff',
+  },
+  heroPodLevelAr: {
+    fontSize: 9,
+    marginTop: 1,
   },
   heroPodWeight: {
     fontFamily: 'Orbitron_700Bold',
@@ -888,6 +969,22 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
   },
+  levelArRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 2,
+  },
+  trophyWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  restCardLevelAr: {
+    fontSize: 9,
+    color: colors.textFaint,
+    marginTop: 0,
+  },
   restCardEntryTime: {
     fontSize: 8,
     color: colors.textFaint,
@@ -895,6 +992,15 @@ const styles = StyleSheet.create({
   },
   restCardRankWrap: {
     flexShrink: 0,
+  },
+  removeEntryBtn: {
+    padding: 4,
+    flexShrink: 0,
+  },
+  removeEntryBtnHero: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
   },
   restCardFishWrap: {
     // aspectRatio set inline based on the image's actual dimensions
@@ -982,6 +1088,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: colors.text,
+  },
+  tournamentCardLevelAr: {
+    fontSize: 11,
+    color: colors.textFaint,
+    marginTop: 1,
   },
   tournamentCardEntryTime: {
     fontSize: 10,

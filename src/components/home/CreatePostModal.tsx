@@ -26,6 +26,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { colors } from '@/utils/colors';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { useFeedContext } from '@/src/context/FeedContext';
+import { useGamificationContext } from '@/src/context/GamificationContext';
 
 const { width: SW } = Dimensions.get('window');
 const TEAL = colors.teal;
@@ -65,6 +66,7 @@ export function CreatePostModal({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const { user } = useAuthContext();
   const { addFeedPost } = useFeedContext();
+  const gamification = useGamificationContext();
 
   const [media, setMedia]     = useState<MediaItem[]>([]);
   const [caption, setCaption] = useState('');
@@ -94,10 +96,13 @@ export function CreatePostModal({ visible, onClose }: Props) {
       return;
     }
     const remaining = MAX_MEDIA - media.length;
+    // Pick one at a time so user can crop each image (allowsEditing not supported with multi-select).
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsMultipleSelection: true,
+      mediaTypes: ['images', 'videos'],
+      allowsMultipleSelection: remaining > 1,
       selectionLimit: remaining,
+      allowsEditing: remaining === 1,
+      aspect: remaining === 1 ? [1, 1] : undefined,
       quality: 0.85,
       orderedSelection: true,
     });
@@ -127,11 +132,14 @@ export function CreatePostModal({ visible, onClose }: Props) {
         avatar:    user?.avatarUrl ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.id ?? 'anon'}`,
         postedAt:  new Date().toISOString(),
         photoUrl:  media[0]?.uri ?? '',
-        mediaUrls: media.map((m) => m.uri),
+        firstMediaType: media[0]?.type ?? 'image',
+        mediaItems: media.map((m) => ({ uri: m.uri, type: m.type })),
         caption:   caption.trim(),
         species:   '',
         weight:    0,
         location:  '',
+        authorLevel: gamification?.levelInfo?.level,
+        authorAnglerRating: (user as { angler_rating?: number })?.angler_rating,
       });
       reset();
       onClose();

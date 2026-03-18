@@ -24,7 +24,7 @@ export default function LoginScreen() {
   const topPadding = Math.max(insets.top, 44) + 16;
 
   const handleSubmit = () => {
-    console.log(isSignUp ? 'Sign up' : 'Login', { email, password, username });
+    // Web login: wire to signIn/signUp when ready. Do not log credentials.
   };
 
   return (

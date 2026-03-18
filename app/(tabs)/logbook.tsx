@@ -17,7 +17,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { colors } from '@/utils/colors';
 import { type Catch } from '@/utils/mockData';
 import { useAuthContext } from '@/src/context/AuthContext';
-import { getUserCatches } from '@/src/lib/supabase';
+import { getUserCatches, getUserProfile, updateUserProfile } from '@/src/lib/supabase';
 import { getPendingActions } from '@/src/lib/pendingActions';
 import { useLogbookPrefs } from '@/src/hooks/useLogbookPrefs';
 import { useGamificationContext } from '@/src/context/GamificationContext';
@@ -71,6 +71,8 @@ function getSpeciesCategory(species: string): 'freshwater' | 'saltwater' {
 }
 
 type FilterType = 'all' | 'freshwater' | 'saltwater';
+
+type LogbookVisibility = 'public' | 'friends' | 'private';
 
 export default function LogbookScreen() {
   const router = useRouter();
@@ -136,6 +138,39 @@ export default function LogbookScreen() {
   const [filter, setFilter] = useState<FilterType>('all');
   const [editingLogbookName, setEditingLogbookName] = useState(false);
   const [tempLogbookName, setTempLogbookName] = useState(logbookName);
+  const [visibility, setVisibility] = useState<LogbookVisibility>('public');
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    getUserProfile(user.id).then((profile) => {
+      if (!profile) return;
+      const priv = (profile as { logbook_private?: boolean }).logbook_private;
+      const pub = (profile as { public?: boolean }).public;
+      if (priv) setVisibility('private');
+      else if (pub !== false) setVisibility('public');
+      else setVisibility('friends');
+    });
+  }, [user?.id]);
+
+  const setLogbookVisibility = useCallback(
+    async (next: LogbookVisibility) => {
+      if (!user?.id || next === visibility || visibilitySaving) return;
+      setVisibilitySaving(true);
+      try {
+        await updateUserProfile(user.id, {
+          logbook_private: next === 'private',
+          public: next === 'public',
+        });
+        setVisibility(next);
+      } catch (e) {
+        console.error('Update logbook visibility:', e);
+      } finally {
+        setVisibilitySaving(false);
+      }
+    },
+    [user?.id, visibility, visibilitySaving]
+  );
 
   useEffect(() => {
     setTempLogbookName(logbookName);
@@ -193,7 +228,56 @@ export default function LogbookScreen() {
         keyboardVerticalOffset={0}
       >
         <View style={styles.header}>
-          <SnaggedWordmark />
+          <View style={styles.headerTop}>
+            <SnaggedWordmark />
+            <View style={styles.visibilityWrap}>
+              <Text style={styles.visibilityLabel}>Who can see your logbook?</Text>
+              <View style={styles.visibilityRow}>
+                {(['public', 'friends', 'private'] as LogbookVisibility[]).map((mode) => {
+                const isActive = visibility === mode;
+                const pillColor =
+                  mode === 'public'
+                    ? colors.teal
+                    : mode === 'friends'
+                      ? colors.blue
+                      : colors.red;
+                return (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[
+                      styles.visibilityPill,
+                      isActive && { backgroundColor: pillColor, borderColor: pillColor },
+                    ]}
+                    onPress={() => setLogbookVisibility(mode)}
+                    disabled={visibilitySaving}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.visibilityPillLabel,
+                        isActive && styles.visibilityPillLabelActive,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {mode === 'public' ? 'Public' : mode === 'friends' ? 'Friends' : 'Private'}
+                    </Text>
+                    <Ionicons
+                      name={
+                        mode === 'public'
+                          ? 'globe-outline'
+                          : mode === 'friends'
+                            ? 'people-outline'
+                            : 'lock-closed-outline'
+                      }
+                      size={16}
+                      color={isActive ? '#fff' : colors.lightSubtext}
+                    />
+                  </TouchableOpacity>
+                );
+                })}
+              </View>
+            </View>
+          </View>
           {editingLogbookName ? (
             <View style={styles.titleRow}>
               <TextInput
@@ -377,11 +461,52 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.lightBackground },
   keyboardWrap: { flex: 1 },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    gap: 10,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
+  },
+  visibilityWrap: {
+    alignItems: 'flex-end',
+  },
+  visibilityLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.lightSubtext,
+    marginBottom: 6,
+  },
+  visibilityRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  visibilityPill: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: colors.lightBorder,
+    minWidth: 72,
+  },
+  visibilityPillLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.lightSubtext,
+  },
+  visibilityPillLabelActive: {
+    color: '#fff',
   },
   headerSnagged: {
     fontFamily: 'Orbitron_900Black',

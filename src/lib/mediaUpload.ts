@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { uploadFileFromUri } from './supabase';
+import { devLog } from './env';
 
 async function copyToCacheIfNeeded(uri: string): Promise<string> {
   const trimmed = (uri || '').trim();
@@ -33,7 +34,7 @@ export async function uploadJpeg(
     { compress, format: ImageManipulator.SaveFormat.JPEG }
   );
   const uploadUri = manipulated?.uri || workUri;
-  console.log('[Storage] uploadJpeg', { bucket, path, localUri, manipulatedUri: uploadUri });
+  devLog('[Storage] uploadJpeg', { bucket, path, localUri, manipulatedUri: uploadUri });
   await uploadFileFromUri(bucket, path, uploadUri, {
     upsert: true,
     contentType: 'image/jpeg',

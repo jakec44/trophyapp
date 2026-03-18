@@ -29,9 +29,10 @@ import { colors } from '@/utils/colors';
 import type { UserFish, MetricType } from '@/src/types/tournaments';
 import { enterTournament } from '@/src/api/tournaments';
 import { useAuthContext } from '@/src/context/AuthContext';
+import { usePresentPaywall } from '@/src/hooks/usePresentPaywall';
 import { mockUserProfile } from '@/utils/mockData';
 import { getUserCatches } from '@/src/lib/supabase';
-import { getProLimitType } from '@/src/lib/errorMessages';
+import { getProLimitType, toFriendlyMessage } from '@/src/lib/errorMessages';
 import { getPendingActions } from '@/src/lib/pendingActions';
 
 const { width: SW, height: SH } = Dimensions.get('window');
@@ -253,6 +254,7 @@ export function TournamentEntryFlow({
 }: TournamentEntryFlowProps) {
   const router = useRouter();
   const { user } = useAuthContext();
+  const { presentPaywall } = usePresentPaywall();
   const [step, setStep] = useState<Step>('pick');
   const [selected, setSelected] = useState<UserFish | null>(null);
   const [isPosting, setIsPosting] = useState(false);
@@ -334,7 +336,7 @@ export function TournamentEntryFlow({
 
     setIsPosting(true);
     try {
-      const userState = (mockUserProfile as { state?: string }).state;
+      const userState = user?.state ?? undefined;
       await enterTournament(tournamentId, userId, username, selected, avatarUrl, {
         logbookCatchId: selected.id,
         userState,
@@ -350,14 +352,17 @@ export function TournamentEntryFlow({
           'Upgrade to Pro to enter multiple tournaments.',
           [
             { text: 'OK', style: 'cancel' },
-            { text: 'Upgrade', onPress: () => router.push('/coin-shop') },
+            { text: 'Upgrade', onPress: () => presentPaywall() },
           ]
         );
+      } else {
+        const msg = toFriendlyMessage(e);
+        Alert.alert('Could not enter tournament', msg);
       }
     } finally {
       setIsPosting(false);
     }
-  }, [selected, user, tournamentId, onEntered, handleClose, router]);
+  }, [selected, user, tournamentId, onEntered, handleClose, presentPaywall]);
 
   return (
     <Modal
@@ -385,8 +390,13 @@ export function TournamentEntryFlow({
           {!postedOk && step === 'pick' && (
             <View style={{ flex: 1 }}>
               <View style={styles.pickHeader}>
-                <Text style={styles.pickTitle}>Choose a catch to enter</Text>
-                <Text style={styles.pickSub}>{tournamentTitle}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pickTitle}>Choose a catch to enter</Text>
+                  <Text style={styles.pickSub}>{tournamentTitle}</Text>
+                </View>
+                <TouchableOpacity onPress={handleClose} style={styles.closeBtn} hitSlop={10}>
+                  <Ionicons name="close" size={22} color={colors.lightSubtext} />
+                </TouchableOpacity>
               </View>
 
               {loadingCatches ? (
@@ -469,11 +479,15 @@ const styles = StyleSheet.create({
 
   // ── Pick step
   pickHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.lightBorder,
     marginBottom: 4,
   },
+  closeBtn: { padding: 6 },
   pickTitle: {
     fontSize: 19,
     fontWeight: '800',
