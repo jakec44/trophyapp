@@ -482,6 +482,7 @@ export default function ProfileScreen() {
           onEditAvatar={() => router.push('/(tabs)/profile-edit')}
         />
 
+        <View style={styles.rankSection}>
         {isRankUnlocked(totalCatches) ? (
           <SnaggedRankCard
             trophies={anglerRating}
@@ -498,6 +499,7 @@ export default function ProfileScreen() {
             <RankStandingsLockedCard />
           </>
         )}
+        </View>
 
         {/* Stories — own profile only */}
         <ProfileStoriesSection
@@ -734,6 +736,10 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 12,
+  },
+  rankSection: {
+    marginTop: 4,
+    marginBottom: 8,
   },
   xpSection: {
     marginBottom: 10,

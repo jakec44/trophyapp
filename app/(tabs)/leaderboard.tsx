@@ -409,8 +409,8 @@ export default function LeaderboardScreen() {
             <Text style={styles.title}>LEADERBOARDS</Text>
             <Text style={styles.subtitle}>
               {category === 'overall'
-                ? `ANGLER RATING • ${season?.name ?? 'Season 1'}${season && season.days_remaining >= 0 ? ` • ${season.days_remaining} days left` : ''}`
-                : `Best ${category.charAt(0).toUpperCase() + category.slice(1)} • ${scope === 'friends' ? 'Friends' : scope === 'local' ? 'Local' : 'Global'}`}
+                ? `${season?.name ?? 'Season 1'}${season && season.days_remaining >= 0 ? ` · ${season.days_remaining} days left` : ''}`
+                : `Best ${category.charAt(0).toUpperCase() + category.slice(1)} · ${scope === 'friends' ? 'Friends' : scope === 'local' ? 'Local' : 'Global'}`}
             </Text>
           </View>
           <View style={styles.headerRight} />
@@ -582,7 +582,7 @@ export default function LeaderboardScreen() {
             </View>
           )
         ) : rows.length === 0 ? (
-          <Text style={styles.empty}>No anglers yet. Enter a tournament to get ranked.</Text>
+          <Text style={styles.empty}>No anglers ranked yet. Log catches to climb the board.</Text>
         ) : (
           <>
             {/* Podium: 1st on top center; 2nd and 3rd below — same for global and local; use placeholders when <3 rows. */}

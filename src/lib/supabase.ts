@@ -2141,15 +2141,23 @@ export async function getAnglerLeaderboard(
     }));
   };
 
-  // Try RPC with correct param names (int, text, text)
+  // Try RPC — only pass p_user_id for friends (keeps compatibility with pre-migration 3-arg RPC)
   try {
-    const { data, error } = await supabase.rpc('get_angler_leaderboard', {
+    const rpcArgs: {
+      p_limit_n: number;
+      p_scope: LeaderboardScope;
+      p_state_filter: string | null;
+      p_user_id?: string | null;
+    } = {
       p_limit_n: limit,
       p_scope: scope,
       p_state_filter: state,
-      p_user_id: scope === 'friends' ? userId : null,
-    });
-    if (!error && data && Array.isArray(data) && data.length > 0) {
+    };
+    if (scope === 'friends' && userId) {
+      rpcArgs.p_user_id = userId;
+    }
+    const { data, error } = await supabase.rpc('get_angler_leaderboard', rpcArgs);
+    if (!error && data && Array.isArray(data)) {
       return parseRpc(data);
     }
     if (error) {
@@ -2161,9 +2169,15 @@ export async function getAnglerLeaderboard(
 
   // Fallback: direct profiles query so leaderboard always shows (e.g. RPC missing or returns empty)
   try {
+    let friendIds: Set<string> | null = null;
+    if (scope === 'friends' && userId) {
+      friendIds = await getFriendIdSet(userId);
+      if (friendIds.size === 0) return [];
+    }
+
     let query = supabase
       .from('profiles')
-      .select('id, username, display_name, avatar_url, angler_rating')
+      .select('id, username, display_name, avatar_url, angler_rating, state')
       .order('angler_rating', { ascending: false })
       .limit(limit);
 
@@ -2176,7 +2190,10 @@ export async function getAnglerLeaderboard(
       console.error('[getAnglerLeaderboard] fallback profiles error:', profileError.message);
       return [];
     }
-    const list = (profiles ?? []) as { id: string; username: string | null; display_name: string | null; avatar_url: string | null; angler_rating: number | null }[];
+    let list = (profiles ?? []) as { id: string; username: string | null; display_name: string | null; avatar_url: string | null; angler_rating: number | null; state?: string | null }[];
+    if (friendIds) {
+      list = list.filter((p) => friendIds!.has(p.id));
+    }
     if (list.length === 0) return [];
 
     // Fetch wins/podiums from trophy_badges for these users
@@ -2227,8 +2244,121 @@ export async function getAnglerLeaderboard(
 }
 
 /**
- * Get a single user's AR rank and stats. scope: 'global' | 'local'; stateFilter for local (user's state).
+ * Get a single user's AR rank and stats.
  */
+async function getFriendIdSet(userId: string): Promise<Set<string>> {
+  const ids = new Set<string>([userId]);
+  try {
+    const { data } = await supabase
+      .from('friendships')
+      .select('user_id_1, user_id_2')
+      .eq('status', 'accepted')
+      .or(`user_id_1.eq.${userId},user_id_2.eq.${userId}`);
+    for (const row of data ?? []) {
+      const r = row as { user_id_1: string; user_id_2: string };
+      ids.add(r.user_id_1 === userId ? r.user_id_2 : r.user_id_1);
+    }
+  } catch (e) {
+    console.error('[getFriendIdSet]', e);
+  }
+  return ids;
+}
+
+const SPECIES_MATCHERS: Record<'bass' | 'redfish' | 'tarpon' | 'snook', (s: string) => boolean> = {
+  bass: (s) => s.toLowerCase().includes('bass'),
+  redfish: (s) => s.toLowerCase().includes('redfish'),
+  tarpon: (s) => s.toLowerCase().includes('tarpon'),
+  snook: (s) => s.toLowerCase().includes('snook'),
+};
+
+async function getSpeciesLeaderboardFallback(
+  species: 'bass' | 'redfish' | 'tarpon' | 'snook',
+  scope: LeaderboardScope,
+  stateFilter: string | null,
+  userId: string | null,
+  limit: number
+): Promise<SpeciesLeaderboardRow[]> {
+  const useWeight = species === 'bass' || species === 'tarpon';
+  const unit: 'lbs' | 'in' = useWeight ? 'lbs' : 'in';
+  const match = SPECIES_MATCHERS[species];
+
+  try {
+    const { data: catches, error } = await supabase
+      .from('catches')
+      .select('id, user_id, species, weight_lb, length_in')
+      .is('deleted_at', null)
+      .limit(5000);
+
+    if (error || !catches?.length) return [];
+
+    let friendIds: Set<string> | null = null;
+    if (scope === 'friends' && userId) {
+      friendIds = await getFriendIdSet(userId);
+    }
+
+    const bestByUser = new Map<string, { metric_value: number; catch_id: string }>();
+
+    for (const row of catches) {
+      const c = row as {
+        id: string;
+        user_id: string;
+        species: string | null;
+        weight_lb: number | null;
+        length_in: number | null;
+      };
+      if (!c.species || !match(c.species)) continue;
+      if (friendIds && !friendIds.has(c.user_id)) continue;
+
+      const metric = useWeight ? Number(c.weight_lb ?? 0) : Number(c.length_in ?? 0);
+      if (metric <= 0) continue;
+
+      const existing = bestByUser.get(c.user_id);
+      if (!existing || metric > existing.metric_value) {
+        bestByUser.set(c.user_id, { metric_value: metric, catch_id: c.id });
+      }
+    }
+
+    if (bestByUser.size === 0) return [];
+
+    const userIds = [...bestByUser.keys()];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, username, display_name, avatar_url, state')
+      .in('id', userIds);
+
+    const profileMap = new Map(
+      (profiles ?? []).map((p) => [p.id, p as { id: string; username: string | null; display_name: string | null; avatar_url: string | null; state: string | null }])
+    );
+
+    const rows: SpeciesLeaderboardRow[] = [];
+    for (const [uid, best] of bestByUser) {
+      const profile = profileMap.get(uid);
+      if (!profile) continue;
+      if (scope === 'local' && stateFilter?.trim()) {
+        const st = profile.state?.trim().toLowerCase();
+        if (!st || st !== stateFilter.trim().toLowerCase()) continue;
+      }
+      rows.push({
+        rank: 0,
+        id: uid,
+        username: profile.username ?? null,
+        display_name: profile.display_name ?? null,
+        avatar_url: profile.avatar_url ?? null,
+        state: profile.state ?? null,
+        metric_value: best.metric_value,
+        catch_id: best.catch_id,
+        metric_unit: unit,
+      });
+    }
+
+    rows.sort((a, b) => b.metric_value - a.metric_value);
+    return rows.slice(0, limit).map((r, i) => ({ ...r, rank: i + 1 }));
+  } catch (e) {
+    console.error('[getSpeciesLeaderboardFallback]', e);
+    return [];
+  }
+}
+
 export async function getSpeciesLeaderboard(
   species: 'bass' | 'redfish' | 'tarpon' | 'snook',
   scope: LeaderboardScope,
@@ -2245,8 +2375,8 @@ export async function getSpeciesLeaderboard(
       p_limit_n: limit,
     });
     if (error) {
-      console.error('[getSpeciesLeaderboard] RPC error:', error.message);
-      return [];
+      console.warn('[getSpeciesLeaderboard] RPC error, using fallback:', error.message);
+      return getSpeciesLeaderboardFallback(species, scope, stateFilter, userId, limit);
     }
     const rows = (data ?? []) as {
       rank: number;
@@ -2272,7 +2402,7 @@ export async function getSpeciesLeaderboard(
     }));
   } catch (e) {
     console.error('[getSpeciesLeaderboard]', e);
-    return [];
+    return getSpeciesLeaderboardFallback(species, scope, stateFilter, userId, limit);
   }
 }
 
