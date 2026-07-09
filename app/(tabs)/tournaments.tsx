@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -39,7 +39,9 @@ import { usePresentPaywall } from '@/src/hooks/usePresentPaywall';
 import type { Tournament, FishEntry } from '@/src/types/tournaments';
 import { getEntryMetricValue, formatMetric } from '@/src/types/tournaments';
 import { LeaderboardRow } from '@/src/components/home/LeaderboardRow';
-import { GlobalLocalToggle } from '@/src/components/competitions/GlobalLocalToggle';
+import { ScopeToggle } from '@/src/components/rankings/ScopeToggle';
+import type { LeaderboardScope } from '@/src/lib/supabase';
+import { useFriendsContext } from '@/src/context/FriendsContext';
 import { TournamentsAboutModal } from '@/src/components/competitions/TournamentsAboutModal';
 import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
 import { TournamentEntryFlow } from '@/src/components/competitions/TournamentEntryFlow';
@@ -54,27 +56,17 @@ const ACCENT_BLUE = TEAL;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const FILTER_IDS: { id: string; label: string }[] = [
-  { id: 'biggest-fish-this-week', label: 'Biggest Fish Overall' },
-  { id: 'tournament-redfish', label: 'Redfish' },
   { id: 'tournament-bass', label: 'Bass' },
+  { id: 'tournament-redfish', label: 'Redfish' },
   { id: 'tournament-snook', label: 'Snook' },
-  { id: 'tournament-flounder', label: 'Flounder' },
-  { id: 'tournament-striper', label: 'Striper' },
   { id: 'tournament-tarpon', label: 'Tarpon' },
-  { id: 'tournament-freshwater-trout', label: 'Freshwater Trout' },
-  { id: 'tournament-smallest', label: 'Smallest Fish' },
 ];
 
 const FEATURED_IDS = [
-  'biggest-fish-this-week',
-  'tournament-redfish',
   'tournament-bass',
+  'tournament-redfish',
   'tournament-snook',
-  'tournament-flounder',
-  'tournament-striper',
   'tournament-tarpon',
-  'tournament-freshwater-trout',
-  'tournament-smallest',
 ];
 
 const SELECTED_TOURNAMENT_KEY = '@Snagged/selectedTournamentId';
@@ -86,9 +78,14 @@ export default function TournamentsScreen() {
   const { tournamentId: deepLinkId } = useLocalSearchParams<{ tournamentId?: string }>();
   const insets = useSafeAreaInsets();
   const topPadding = Math.max(4, insets.top - 4);
-  const [scope, setScope] = useState<'global' | 'local'>('global');
+  const [scope, setScope] = useState<LeaderboardScope>('global');
   const bottomPadding = useBottomSafePadding();
   const { state: locationState, fetchStateFromLocation } = useLocationState();
+  const { friends } = useFriendsContext();
+  const friendIds = useMemo(
+    () => new Set([user?.id, ...friends.map((f) => f.id)].filter(Boolean) as string[]),
+    [user?.id, friends]
+  );
   const [featuredCompetitionId, setFeaturedCompetitionIdState] = useState(
     deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : FEATURED_IDS[0]
   );
@@ -121,7 +118,8 @@ export default function TournamentsScreen() {
   };
 
   const stateForLocal = scope === 'local' ? (locationState ?? user?.state ?? undefined) : undefined;
-  const { tournaments, userFish, voteLoading, handleVote, handleRefresh, loading: tournamentsLoading } = useHomeTournaments(scope, user?.id, stateForLocal);
+  const tournamentScope = scope === 'friends' ? 'global' : scope;
+  const { tournaments, userFish, voteLoading, handleVote, handleRefresh, loading: tournamentsLoading } = useHomeTournaments(tournamentScope, user?.id, stateForLocal);
   const winCheck = useTournamentWinCheckContext();
 
   // Restore last selected tournament on mount (so reload doesn't always show first)
@@ -159,17 +157,22 @@ export default function TournamentsScreen() {
     setLoading(true);
     try {
       const userStateForLocal = scope === 'local' ? (locationState ?? user?.state ?? undefined) : undefined;
+      const fetchScope = scope === 'friends' ? 'global' : scope;
       const { entries: list } = await fetchTournamentEntries(
         featuredCompetitionId,
         0,
         200,
-        scope,
+        fetchScope,
         userStateForLocal,
         currentUserId
       );
-      const authorIds = [...new Set(list.map((e) => e.userId))];
+      let filtered = list;
+      if (scope === 'friends') {
+        filtered = list.filter((e) => friendIds.has(e.userId));
+      }
+      const authorIds = [...new Set(filtered.map((e) => e.userId))];
       const displayMap = await getProfileDisplayItemsBatch(authorIds);
-      let enriched = list.map((e) => ({
+      let enriched = filtered.map((e) => ({
         ...e,
         displayItems: displayMap[e.userId] ?? [],
       }));
@@ -182,7 +185,7 @@ export default function TournamentsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [featuredCompetitionId, scope, locationState, user?.state, currentUserId]);
+  }, [featuredCompetitionId, scope, locationState, user?.state, currentUserId, friendIds, featuredTournament?.metricType]);
 
   const [voteLoadingEntryId, setVoteLoadingEntryId] = useState<string | null>(null);
   const handleVoteGated = useCallback(
@@ -253,7 +256,7 @@ export default function TournamentsScreen() {
     }, [winCheck, tournaments.length, handleRefresh])
   );
 
-  const handleScopeChange = async (v: 'global' | 'local') => {
+  const handleScopeChange = async (v: LeaderboardScope) => {
     if (v === 'local' && !locationState) {
       await fetchStateFromLocation();
     }
@@ -402,25 +405,19 @@ export default function TournamentsScreen() {
         {/* Global / Local */}
         <View style={styles.toggleWrap}>
           <View style={styles.toggleRow}>
-            <GlobalLocalToggle value={scope} onChange={handleScopeChange} dark />
+            <ScopeToggle
+              value={scope}
+              onChange={handleScopeChange}
+              localLabel={stateForLocal ?? undefined}
+            />
           </View>
-          <View style={styles.viewLeaderboardWrap}>
-            <TouchableOpacity
-              style={styles.viewLeaderboardBtn}
-              onPress={() => router.push('/(tabs)/leaderboard')}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={['#FFD700', '#FFA500', '#FF8C00']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.viewLeaderboardGradient}
-              >
-                <Text style={styles.viewLeaderboardText}>🏆 View Leaderboard</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.syncHint}>Entries sync to both</Text>
+          <TouchableOpacity
+            style={styles.viewLeaderboardLink}
+            onPress={() => router.push('/(tabs)/leaderboard')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.viewLeaderboardLinkText}>View full leaderboards →</Text>
+          </TouchableOpacity>
         </View>
 
         <TournamentsAboutModal visible={showAboutModal} onClose={() => setShowAboutModal(false)} />
@@ -813,6 +810,16 @@ const styles = StyleSheet.create({
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  viewLeaderboardLink: {
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 6,
+  },
+  viewLeaderboardLinkText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: TEAL,
   },
   viewLeaderboardWrap: {
     alignItems: 'center',

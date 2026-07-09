@@ -358,33 +358,6 @@ export function ProfileHeader({
               </TouchableOpacity>
             )}
           </View>
-
-          {/* Right: Podium layout — Trophies top center, Global left / Local right below */}
-          <View style={styles.rightColumn}>
-            <View style={[styles.rankStatBlock, styles.rankStatAr, styles.rankStatCentered]}>
-              <View style={styles.rankStatTrophyRow}>
-                <Ionicons name="trophy" size={18} color={colors.gold} />
-                <Text style={[styles.rankStatValue, styles.rankStatValueAr]}>
-                  {anglerRating != null ? anglerRating : '—'}
-                </Text>
-              </View>
-              <Text style={[styles.rankStatLabel, styles.rankStatLabelAr]}>Trophies</Text>
-            </View>
-            <View style={styles.rankStatRow}>
-              <View style={[styles.rankStatBlock, styles.rankStatGlobal, styles.rankStatCentered, styles.rankStatHalf]}>
-                <Text style={[styles.rankStatValue, styles.rankStatValueBlue]}>
-                  {arRank != null ? `#${arRank}` : '—'}
-                </Text>
-                <Text style={[styles.rankStatLabel, styles.rankStatLabelBlue]}>Global</Text>
-              </View>
-              <View style={[styles.rankStatBlock, styles.rankStatLocal, styles.rankStatCentered, styles.rankStatHalf]}>
-                <Text style={[styles.rankStatValue, styles.rankStatValueBlue]}>
-                  {localRank != null ? `#${localRank}` : '—'}
-                </Text>
-                <Text style={[styles.rankStatLabel, styles.rankStatLabelBlue]}>Local</Text>
-              </View>
-            </View>
-          </View>
         </View>
       </View>
 
@@ -585,8 +558,7 @@ const styles = StyleSheet.create({
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 16,
+    justifyContent: 'center',
   },
   avatarCenterWrap: {
     alignItems: 'center',

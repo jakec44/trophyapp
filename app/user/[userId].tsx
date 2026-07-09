@@ -23,6 +23,9 @@ import { XPProgressBar } from '@/src/components/gamification/XPProgressBar';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { useFriendsContext } from '@/src/context/FriendsContext';
 import { useBottomSafePadding } from '@/src/components/ScreenContainer';
+import { SnaggedRankCard, RankStandingsLockedCard } from '@/src/components/rankings/SnaggedRankCard';
+import { PlacementsCard } from '@/src/components/rankings/PlacementsCard';
+import { isRankUnlocked } from '@/src/lib/snaggedRank';
 import { isValidImageUri } from '@/src/lib/imageUri';
 import {
   getUserProfile,
@@ -122,6 +125,7 @@ export default function UserProfileScreen() {
   } | null>(null);
   const [arRankGlobal, setArRankGlobal] = useState<number | null>(null);
   const [arRankLocal, setArRankLocal] = useState<number | null>(null);
+  const [catchCount, setCatchCount] = useState(0);
 
   const isOwnProfile = user?.id === userId;
   const isFriend = friends.some((f) => f.userId === userId);
@@ -159,6 +163,13 @@ export default function UserProfileScreen() {
     getUserCatches(userId, 18, 0).then(({ data }) => {
       setCatches((data ?? []) as CatchRow[]);
     }).catch(() => setCatches([]));
+    supabase
+      .from('catches')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .then(({ count }) => setCatchCount(count ?? 0))
+      .catch(() => setCatchCount(0));
   }, [userId]);
 
   // Load friendship status
@@ -369,18 +380,18 @@ export default function UserProfileScreen() {
           />
         </View>
 
-        {/* Trophies (public) — icon + value, Global & Local rank */}
-        {(profile.angler_rating != null || arRankGlobal != null || arRankLocal != null) && (
-          <View style={styles.arRow}>
-            <View style={styles.arValueRow}>
-              <Ionicons name="trophy" size={18} color={colors.gold} />
-              <Text style={styles.arValue}>
-                {profile.angler_rating != null ? profile.angler_rating : '—'}
-                {arRankGlobal != null ? ` · #${arRankGlobal} Global` : ''}
-                {arRankLocal != null ? ` · #${arRankLocal} Local` : ''}
-              </Text>
-            </View>
-          </View>
+        {isRankUnlocked(catchCount) ? (
+          <SnaggedRankCard
+            trophies={profile.angler_rating ?? 0}
+            globalRank={arRankGlobal}
+            localRank={arRankLocal}
+            showLeaderboardButton={false}
+          />
+        ) : (
+          <>
+            <PlacementsCard catchCount={catchCount} />
+            <RankStandingsLockedCard />
+          </>
         )}
 
         {/* Badges — under level, same display and tap behavior as own profile */}

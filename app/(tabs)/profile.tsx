@@ -54,7 +54,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { devLog, isDev } from '@/src/lib/env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { consumePendingFlyReward } from '@/src/lib/flyRewardStore';
-import { AuthGateModal } from '@/src/components/auth/AuthGateModal';
+import { PlacementsCard } from '@/src/components/rankings/PlacementsCard';
+import { SnaggedRankCard, RankStandingsLockedCard } from '@/src/components/rankings/SnaggedRankCard';
+import { isRankUnlocked } from '@/src/lib/snaggedRank';
 
 const ONBOARDING_FIRST_CATCH_PENDING = 'onboarding_first_catch_pending';
 
@@ -479,6 +481,23 @@ export default function ProfileScreen() {
           onEditBio={() => router.push('/(tabs)/profile-edit')}
           onEditAvatar={() => router.push('/(tabs)/profile-edit')}
         />
+
+        {isRankUnlocked(totalCatches) ? (
+          <SnaggedRankCard
+            trophies={anglerRating}
+            globalRank={arRank}
+            localRank={localRank}
+            onViewLeaderboards={() => router.push('/(tabs)/leaderboard')}
+          />
+        ) : (
+          <>
+            <PlacementsCard
+              catchCount={totalCatches}
+              onLogFish={() => router.push('/(tabs)/log')}
+            />
+            <RankStandingsLockedCard />
+          </>
+        )}
 
         {/* Stories — own profile only */}
         <ProfileStoriesSection

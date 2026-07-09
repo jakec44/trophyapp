@@ -17,7 +17,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { useGamificationContext } from '@/src/context/GamificationContext';
-import { getAnglerLeaderboard, getAnglerRank, getLeaderboardProfileExtras, getProfileDisplayItemsBatch, getUserProfile, updateUserProfile, type AnglerLeaderboardRow } from '@/src/lib/supabase';
+import { getAnglerLeaderboard, getAnglerRank, getSpeciesLeaderboard, getLeaderboardProfileExtras, getProfileDisplayItemsBatch, getUserProfile, updateUserProfile, type AnglerLeaderboardRow, type SpeciesLeaderboardRow, type LeaderboardScope } from '@/src/lib/supabase';
+import { ScopeToggle } from '@/src/components/rankings/ScopeToggle';
+import { SpeciesCategoryTabs } from '@/src/components/rankings/SpeciesCategoryTabs';
+import type { LeaderboardCategory } from '@/src/lib/snaggedRank';
 import { useSeason } from '@/src/hooks/useSeason';
 import { useLocationState } from '@/src/hooks/useLocationState';
 import { getPublicUrl, getAvatarUrlWithCacheBust } from '@/src/lib/supabase';
@@ -226,8 +229,11 @@ export default function LeaderboardScreen() {
   const topPadding = Math.max(4, insets.top - 4);
   const bottomPadding = useBottomSafePadding();
 
-  const [scope, setScope] = useState<'global' | 'local'>('global');
+  const [scope, setScope] = useState<LeaderboardScope>('global');
+  const [category, setCategory] = useState<LeaderboardCategory>('overall');
   const [rows, setRows] = useState<AnglerLeaderboardRow[]>([]);
+  const [speciesRows, setSpeciesRows] = useState<SpeciesLeaderboardRow[]>([]);
+  const [mySpeciesRank, setMySpeciesRank] = useState<{ rank: number | null; metric_value: number; metric_unit: string } | null>(null);
   const [avatarCacheBust, setAvatarCacheBust] = useState(0);
   const [displayMap, setDisplayMap] = useState<Record<string, import('@/src/lib/supabase').ProfileDisplayItem[]>>({});
   const [profileExtrasMap, setProfileExtrasMap] = useState<Record<string, { total_xp: number; prestige: number }>>({});
@@ -242,16 +248,65 @@ export default function LeaderboardScreen() {
   const stateFilter = scope === 'local' ? (locationState ?? user?.state ?? null) : null;
   const userLocation = scope === 'local' && stateFilter ? stateFilter : ([user?.city, user?.state].filter(Boolean).join(', ') || user?.location || user?.state || null);
 
+  const handleScopeChange = useCallback(async (next: LeaderboardScope) => {
+    if (next === 'local' && !locationState) {
+      const stateFromLoc = await fetchStateFromLocation();
+      if (stateFromLoc && user?.id) {
+        try {
+          await updateUserProfile(user.id, { state: stateFromLoc });
+        } catch (e) {
+          console.error('Failed to save state to profile:', e);
+        }
+      }
+    }
+    setScope(next);
+  }, [locationState, fetchStateFromLocation, user?.id]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setLocalFallbackToGlobal(false);
+    setSpeciesRows([]);
+    setMySpeciesRank(null);
     try {
+      if (category !== 'overall') {
+        const effectiveScope: LeaderboardScope =
+          scope === 'local' && !stateFilter ? 'global' : scope;
+        const effectiveState = scope === 'local' && !stateFilter ? null : stateFilter;
+        const list = await getSpeciesLeaderboard(
+          category,
+          effectiveScope,
+          effectiveState,
+          user?.id ?? null,
+          10000
+        );
+        setSpeciesRows(list);
+        if (user?.id) {
+          const mine = list.find((r) => r.id === user.id);
+          setMySpeciesRank(
+            mine
+              ? { rank: mine.rank, metric_value: mine.metric_value, metric_unit: mine.metric_unit }
+              : { rank: null, metric_value: 0, metric_unit: list[0]?.metric_unit ?? 'lbs' }
+          );
+        }
+        const userIds = [...new Set(list.map((r) => r.id))];
+        const [displayItems, profileExtras] = await Promise.all([
+          userIds.length > 0 ? getProfileDisplayItemsBatch(userIds) : Promise.resolve({}),
+          userIds.length > 0 ? getLeaderboardProfileExtras(userIds) : Promise.resolve({}),
+        ]);
+        setRows([]);
+        setMyRank(null);
+        setDisplayMap(displayItems);
+        setProfileExtrasMap(profileExtras);
+        setAvatarCacheBust(Date.now());
+        return;
+      }
+
       let list: AnglerLeaderboardRow[];
       let rankData: { rank: number | null; angler_rating: number; wins: number; podiums: number } | null = null;
 
       if (scope === 'local' && stateFilter) {
         const [localList, localRank, profile] = await Promise.all([
-          getAnglerLeaderboard('local', stateFilter, 10000),
+          getAnglerLeaderboard('local', stateFilter, 10000, user?.id ?? null),
           user?.id ? getAnglerRank(user.id, 'local', stateFilter) : Promise.resolve(null),
           user?.id ? getUserProfile(user.id) : Promise.resolve(null),
         ]);
@@ -261,7 +316,7 @@ export default function LeaderboardScreen() {
         if (localList.length === 0) {
           setLocalFallbackToGlobal(true);
           const [globalList, globalRank] = await Promise.all([
-            getAnglerLeaderboard('global', null, 10000),
+            getAnglerLeaderboard('global', null, 10000, user?.id ?? null),
             user?.id ? getAnglerRank(user.id, 'global', null) : Promise.resolve(null),
           ]);
           list = globalList;
@@ -271,10 +326,11 @@ export default function LeaderboardScreen() {
           rankData = localRank;
         }
       } else {
-        const effectiveScope = scope === 'local' && !stateFilter ? 'global' : scope;
+        const effectiveScope: LeaderboardScope =
+          scope === 'local' && !stateFilter ? 'global' : scope;
         const effectiveState = scope === 'local' && !stateFilter ? null : stateFilter;
         const [fetchedList, fetchedRank, profile] = await Promise.all([
-          getAnglerLeaderboard(effectiveScope, effectiveState, 10000),
+          getAnglerLeaderboard(effectiveScope, effectiveState, 10000, user?.id ?? null),
           user?.id ? getAnglerRank(user.id, effectiveScope, effectiveState) : Promise.resolve(null),
           user?.id ? getUserProfile(user.id) : Promise.resolve(null),
         ]);
@@ -284,28 +340,27 @@ export default function LeaderboardScreen() {
         setPrestige(Math.min(3, Math.max(0, p?.prestige ?? 0)));
       }
 
-      let finalList = list;
-      let finalMap: Record<string, import('@/src/lib/supabase').ProfileDisplayItem[]> = {};
       const userIds = [...new Set(list.map((r) => r.id))];
       const [displayItems, profileExtras] = await Promise.all([
         userIds.length > 0 ? getProfileDisplayItemsBatch(userIds) : Promise.resolve({}),
         userIds.length > 0 ? getLeaderboardProfileExtras(userIds) : Promise.resolve({}),
       ]);
-      finalMap = displayItems;
 
-      setRows(finalList);
+      setRows(list);
       setAvatarCacheBust(Date.now());
       setMyRank(rankData ?? null);
-      setDisplayMap(finalMap);
+      setDisplayMap(displayItems);
       setProfileExtrasMap(profileExtras);
     } catch (e) {
       console.error('[Leaderboard] load error', e);
       setRows([]);
+      setSpeciesRows([]);
       setMyRank(null);
+      setMySpeciesRank(null);
     } finally {
       setLoading(false);
     }
-  }, [scope, stateFilter, user?.id]);
+  }, [scope, stateFilter, user?.id, category]);
 
   useEffect(() => {
     load();
@@ -351,59 +406,32 @@ export default function LeaderboardScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>{scope === 'local' ? 'LOCAL RANKINGS' : 'GLOBAL RANKINGS'}</Text>
+            <Text style={styles.title}>LEADERBOARDS</Text>
             <Text style={styles.subtitle}>
-              ANGLER RATING • {season?.name ?? 'Season 1'}
-              {season && season.days_remaining >= 0 ? ` • ${season.days_remaining} days left` : ''}
+              {category === 'overall'
+                ? `ANGLER RATING • ${season?.name ?? 'Season 1'}${season && season.days_remaining >= 0 ? ` • ${season.days_remaining} days left` : ''}`
+                : `Best ${category.charAt(0).toUpperCase() + category.slice(1)} • ${scope === 'friends' ? 'Friends' : scope === 'local' ? 'Local' : 'Global'}`}
             </Text>
           </View>
           <View style={styles.headerRight} />
         </View>
 
-        {/* GLOBAL / LOCAL toggle with icons */}
-        <View style={styles.toggleWrap}>
-          <View style={styles.toggleContainer}>
-            <TouchableOpacity
-              style={[styles.toggleSegment, scope === 'global' && styles.toggleSegmentActive]}
-              onPress={() => setScope('global')}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="globe-outline" size={18} color={scope === 'global' ? '#fff' : colors.textFaint} />
-              <Text numberOfLines={1} style={[styles.toggleText, scope === 'global' && styles.toggleTextActive]}>GLOBAL</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleSegment, scope === 'local' && styles.toggleSegmentActive]}
-              onPress={async () => {
-                if (scope === 'global' && !locationState) {
-                  const stateFromLoc = await fetchStateFromLocation();
-                  if (stateFromLoc && user?.id) {
-                    try {
-                      await updateUserProfile(user.id, { state: stateFromLoc });
-                    } catch (e) {
-                      console.error('Failed to save state to profile:', e);
-                    }
-                  }
-                }
-                setScope('local');
-              }}
-              activeOpacity={0.8}
-              disabled={locationStatus === 'loading'}
-            >
-              {locationStatus === 'loading' ? (
-                <ActivityIndicator size="small" color={scope === 'local' ? '#fff' : colors.textFaint} />
-              ) : (
-                <Ionicons name="location-outline" size={18} color={scope === 'local' ? '#fff' : colors.textFaint} />
-              )}
-              <Text numberOfLines={1} style={[styles.toggleText, scope === 'local' && styles.toggleTextActive]}>LOCAL</Text>
-            </TouchableOpacity>
-          </View>
-          {scope === 'local' && !stateFilter && (
-            <Text style={styles.localHint}>Enable location to see local rankings</Text>
-          )}
-        </View>
+        <ScopeToggle
+          value={scope}
+          onChange={handleScopeChange}
+          localLabel={stateFilter ?? undefined}
+        />
+        {scope === 'local' && !stateFilter && (
+          <Text style={styles.localHint}>Enable location to see local rankings</Text>
+        )}
+        {scope === 'friends' && !user?.id && (
+          <Text style={styles.localHint}>Sign in to see friends rankings</Text>
+        )}
 
-        {/* YOUR RANKING card */}
-        {user?.id && myRank != null && (
+        <SpeciesCategoryTabs value={category} onChange={setCategory} />
+
+        {/* YOUR RANKING card — overall */}
+        {category === 'overall' && user?.id && myRank != null && (
           <View style={styles.yourRankSection}>
             <Text style={styles.yourRankLabel}>YOUR RANKING</Text>
             <View style={styles.yourRankCard}>
@@ -427,7 +455,7 @@ export default function LeaderboardScreen() {
                 <Text style={styles.yourRankMeta}>
                   Level {gamification?.levelInfo?.level ?? '—'}
                   {prestige > 0 ? ` · P${prestige}` : ''}
-                  {' · '}#{myRank.rank ?? '—'} {scope === 'global' || localFallbackToGlobal ? 'Global' : 'Local'}
+                  {' · '}#{myRank.rank ?? '—'} {scope === 'friends' ? 'Friends' : scope === 'global' || localFallbackToGlobal ? 'Global' : 'Local'}
                   {userLocation ? ` - ${userLocation}` : ''}
                 </Text>
                 {(() => {
@@ -455,7 +483,46 @@ export default function LeaderboardScreen() {
           </View>
         )}
 
-        {scope === 'local' && localFallbackToGlobal && stateFilter && (
+        {/* YOUR RANKING card — species */}
+        {category !== 'overall' && user?.id && mySpeciesRank != null && (
+          <View style={styles.yourRankSection}>
+            <Text style={styles.yourRankLabel}>YOUR RANKING</Text>
+            <View style={styles.yourRankCard}>
+              <View style={styles.yourRankIconWrap}>
+                {user?.avatarUrl ? (
+                  <Image
+                    source={{ uri: user.avatarUrl.startsWith('http') ? user.avatarUrl : getPublicUrl(MEDIA_BUCKET, user.avatarUrl) }}
+                    style={styles.yourRankAvatar}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Text style={styles.yourRankIcon}>
+                    {(user?.displayName || user?.username || 'You').slice(0, 2).toUpperCase() || '🎣'}
+                  </Text>
+                )}
+              </View>
+              <View style={styles.yourRankCenter}>
+                <Text style={styles.yourRankUsername} numberOfLines={1}>
+                  {user?.displayName || user?.username || 'You'}
+                </Text>
+                <Text style={styles.yourRankMeta}>
+                  #{mySpeciesRank.rank ?? '—'} {scope === 'friends' ? 'Friends' : scope === 'local' ? 'Local' : 'Global'}
+                  {userLocation && scope === 'local' ? ` - ${userLocation}` : ''}
+                </Text>
+              </View>
+              <View style={styles.yourRankRight}>
+                <Text style={styles.yourRankAR}>
+                  {mySpeciesRank.metric_value > 0
+                    ? `${Number(mySpeciesRank.metric_value).toFixed(1)} ${mySpeciesRank.metric_unit}`
+                    : '—'}
+                </Text>
+                <Text style={styles.yourRankARLabel}>BEST</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {scope === 'local' && localFallbackToGlobal && stateFilter && category === 'overall' && (
           <View style={styles.fallbackBanner}>
             <Text style={styles.fallbackBannerText}>
               No anglers in {stateFilter} yet — showing global rankings
@@ -467,6 +534,53 @@ export default function LeaderboardScreen() {
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={YELLOW} />
           </View>
+        ) : category !== 'overall' ? (
+          speciesRows.length === 0 ? (
+            <Text style={styles.empty}>
+              {scope === 'friends'
+                ? 'No friend catches for this species yet. Log a fish!'
+                : 'No catches for this species yet. Be the first!'}
+            </Text>
+          ) : (
+            <View style={styles.listWrap} collapsable={false}>
+              {speciesRows.map((r) => {
+                const rankStyle = getRankStyle(r.rank);
+                const isYou = user?.id === r.id;
+                const name = r.display_name?.trim() || r.username?.trim() || 'Angler';
+                const avUrl = getAvatarUrlWithCacheBust(r.avatar_url, avatarCacheBust);
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={[styles.row, styles.rowCard, isYou && styles.rowYou]}
+                    onPress={() => router.push(`/user/${r.id}`)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.rankBadge, { backgroundColor: rankStyle.bg }]}>
+                      <Text style={[styles.rankBadgeText, { color: rankStyle.text }]}>{r.rank}</Text>
+                    </View>
+                    <View style={styles.avatarWrap}>
+                      {avUrl ? (
+                        <Image source={{ uri: avUrl }} style={styles.avatar} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                          <Text style={styles.avatarPlaceholderEmoji}>🐟</Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.info}>
+                      <Text style={styles.username}>{name}</Text>
+                      {r.state ? <Text style={styles.meta}>{r.state}</Text> : null}
+                    </View>
+                    <View style={styles.arCol}>
+                      <Text style={styles.arValue}>
+                        {Number(r.metric_value).toFixed(1)} {r.metric_unit}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )
         ) : rows.length === 0 ? (
           <Text style={styles.empty}>No anglers yet. Enter a tournament to get ranked.</Text>
         ) : (

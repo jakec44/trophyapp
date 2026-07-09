@@ -2104,10 +2104,25 @@ export interface AnglerRankResult {
  * Fetch AR leaderboard from Supabase. scope: 'global' | 'local'. For local, pass user's state (e.g. 'FL'); null/empty = all.
  * Uses RPC get_angler_leaderboard; on empty or error, falls back to direct profiles query so leaderboard always shows.
  */
+export type LeaderboardScope = 'friends' | 'global' | 'local';
+
+export interface SpeciesLeaderboardRow {
+  rank: number;
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  state: string | null;
+  metric_value: number;
+  catch_id: string | null;
+  metric_unit: 'lbs' | 'in';
+}
+
 export async function getAnglerLeaderboard(
-  scope: 'global' | 'local',
+  scope: LeaderboardScope,
   stateFilter: string | null,
-  limit = 10000
+  limit = 10000,
+  userId: string | null = null
 ): Promise<AnglerLeaderboardRow[]> {
   const state = stateFilter && stateFilter.trim() ? stateFilter.trim() : null;
 
@@ -2132,6 +2147,7 @@ export async function getAnglerLeaderboard(
       p_limit_n: limit,
       p_scope: scope,
       p_state_filter: state,
+      p_user_id: scope === 'friends' ? userId : null,
     });
     if (!error && data && Array.isArray(data) && data.length > 0) {
       return parseRpc(data);
@@ -2213,9 +2229,56 @@ export async function getAnglerLeaderboard(
 /**
  * Get a single user's AR rank and stats. scope: 'global' | 'local'; stateFilter for local (user's state).
  */
+export async function getSpeciesLeaderboard(
+  species: 'bass' | 'redfish' | 'tarpon' | 'snook',
+  scope: LeaderboardScope,
+  stateFilter: string | null,
+  userId: string | null,
+  limit = 10000
+): Promise<SpeciesLeaderboardRow[]> {
+  try {
+    const { data, error } = await supabase.rpc('get_species_leaderboard', {
+      p_species: species,
+      p_scope: scope,
+      p_state_filter: stateFilter && stateFilter.trim() ? stateFilter.trim() : null,
+      p_user_id: scope === 'friends' ? userId : null,
+      p_limit_n: limit,
+    });
+    if (error) {
+      console.error('[getSpeciesLeaderboard] RPC error:', error.message);
+      return [];
+    }
+    const rows = (data ?? []) as {
+      rank: number;
+      id: string;
+      username: string | null;
+      display_name: string | null;
+      avatar_url: string | null;
+      state: string | null;
+      metric_value: number;
+      catch_id: string | null;
+      metric_unit: string;
+    }[];
+    return rows.map((r) => ({
+      rank: Number(r.rank),
+      id: r.id,
+      username: r.username ?? null,
+      display_name: r.display_name ?? null,
+      avatar_url: r.avatar_url ?? null,
+      state: r.state ?? null,
+      metric_value: Number(r.metric_value ?? 0),
+      catch_id: r.catch_id ?? null,
+      metric_unit: r.metric_unit === 'lbs' ? 'lbs' : 'in',
+    }));
+  } catch (e) {
+    console.error('[getSpeciesLeaderboard]', e);
+    return [];
+  }
+}
+
 export async function getAnglerRank(
   userId: string,
-  scope: 'global' | 'local' = 'global',
+  scope: LeaderboardScope = 'global',
   stateFilter: string | null = null
 ): Promise<AnglerRankResult> {
   try {
