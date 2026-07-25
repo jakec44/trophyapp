@@ -485,10 +485,10 @@ export default function ProfileScreen() {
         <View style={styles.rankSection}>
         {isRankUnlocked(totalCatches) ? (
           <SnaggedRankCard
-            trophies={anglerRating}
+            trophies={Math.max(anglerRating, gamification.totalXp ?? 0)}
             globalRank={arRank}
             localRank={localRank}
-            onViewLeaderboards={() => router.push('/(tabs)/leaderboard')}
+            onViewLeaderboards={() => router.push('/(tabs)/rankings')}
           />
         ) : (
           <>

@@ -1,6 +1,6 @@
 /**
- * Snagged Rank tier system — gated behind PLACEMENTS_REQUIRED logged catches.
- * Tiers derive from angler_rating (trophy points).
+ * Species ranking options for the Rankings tab.
+ * Bass/Tarpon/Catfish ranked by weight; Snook/Bluegill/Jack Crevalle by length.
  */
 
 export const PLACEMENTS_REQUIRED = 5;
@@ -77,15 +77,32 @@ export function getTierColor(tierName: (typeof TIER_NAMES)[number]): string {
   }
 }
 
-export type SpeciesLeaderboardSpecies = 'bass' | 'redfish' | 'tarpon' | 'snook';
+export type SpeciesLeaderboardSpecies =
+  | 'bass'
+  | 'tarpon'
+  | 'snook'
+  | 'bluegill'
+  | 'jack-crevalle'
+  | 'catfish';
 
-export const SPECIES_LEADERBOARD_OPTIONS: { id: SpeciesLeaderboardSpecies; label: string; unit: 'lbs' | 'in' }[] = [
+export const SPECIES_LEADERBOARD_OPTIONS: {
+  id: SpeciesLeaderboardSpecies;
+  label: string;
+  unit: 'lbs' | 'in';
+}[] = [
   { id: 'bass', label: 'Bass', unit: 'lbs' },
-  { id: 'redfish', label: 'Redfish', unit: 'in' },
   { id: 'tarpon', label: 'Tarpon', unit: 'lbs' },
   { id: 'snook', label: 'Snook', unit: 'in' },
+  { id: 'bluegill', label: 'Bluegill', unit: 'in' },
+  { id: 'jack-crevalle', label: 'Jack Crevalle', unit: 'in' },
+  { id: 'catfish', label: 'Catfish', unit: 'lbs' },
 ];
 
 export type LeaderboardScope = 'friends' | 'global' | 'local';
 
 export type LeaderboardCategory = 'overall' | SpeciesLeaderboardSpecies;
+
+/** Weight-based species for rankings */
+export function speciesUsesWeight(species: SpeciesLeaderboardSpecies): boolean {
+  return species === 'bass' || species === 'tarpon' || species === 'catfish';
+}

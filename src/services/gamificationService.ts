@@ -1,8 +1,6 @@
 /**
- * Shared gamification helpers (no React). Used by both GamificationContext and
- * TournamentWinCheckContext to avoid a circular dependency between the two contexts.
- * Tournament win flow notifies award via notifyAward(); GamificationProvider
- * subscribes and updates XP state.
+ * Shared gamification helpers (no React).
+ * Trophies are earned by logging fish. Tournament award notifications are ignored.
  */
 
 export type AwardListener = (xp: number) => void;
@@ -16,12 +14,7 @@ export function registerAwardListener(cb: AwardListener): () => void {
   };
 }
 
-export function notifyAward(xp: number): void {
-  awardListeners.forEach((cb) => {
-    try {
-      cb(xp);
-    } catch (e) {
-      console.warn('[gamificationService] listener error:', e);
-    }
-  });
+/** @deprecated Tournament trophies removed — no-op. Use catch logging to award trophies. */
+export function notifyAward(_xp: number): void {
+  // Intentionally empty: trophies come from logging fish, not tournament placements.
 }

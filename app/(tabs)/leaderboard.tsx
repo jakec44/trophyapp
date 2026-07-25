@@ -17,10 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { useGamificationContext } from '@/src/context/GamificationContext';
-import { getAnglerLeaderboard, getAnglerRank, getSpeciesLeaderboard, getLeaderboardProfileExtras, getProfileDisplayItemsBatch, getUserProfile, updateUserProfile, type AnglerLeaderboardRow, type SpeciesLeaderboardRow, type LeaderboardScope } from '@/src/lib/supabase';
+import { getAnglerLeaderboard, getAnglerRank, getLeaderboardProfileExtras, getProfileDisplayItemsBatch, getUserProfile, updateUserProfile, type AnglerLeaderboardRow, type LeaderboardScope } from '@/src/lib/supabase';
 import { ScopeToggle } from '@/src/components/rankings/ScopeToggle';
-import { SpeciesCategoryTabs } from '@/src/components/rankings/SpeciesCategoryTabs';
-import type { LeaderboardCategory } from '@/src/lib/snaggedRank';
 import { useSeason } from '@/src/hooks/useSeason';
 import { useLocationState } from '@/src/hooks/useLocationState';
 import { getPublicUrl, getAvatarUrlWithCacheBust } from '@/src/lib/supabase';
@@ -230,10 +228,7 @@ export default function LeaderboardScreen() {
   const bottomPadding = useBottomSafePadding();
 
   const [scope, setScope] = useState<LeaderboardScope>('global');
-  const [category, setCategory] = useState<LeaderboardCategory>('overall');
   const [rows, setRows] = useState<AnglerLeaderboardRow[]>([]);
-  const [speciesRows, setSpeciesRows] = useState<SpeciesLeaderboardRow[]>([]);
-  const [mySpeciesRank, setMySpeciesRank] = useState<{ rank: number | null; metric_value: number; metric_unit: string } | null>(null);
   const [avatarCacheBust, setAvatarCacheBust] = useState(0);
   const [displayMap, setDisplayMap] = useState<Record<string, import('@/src/lib/supabase').ProfileDisplayItem[]>>({});
   const [profileExtrasMap, setProfileExtrasMap] = useState<Record<string, { total_xp: number; prestige: number }>>({});
@@ -265,42 +260,7 @@ export default function LeaderboardScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     setLocalFallbackToGlobal(false);
-    setSpeciesRows([]);
-    setMySpeciesRank(null);
     try {
-      if (category !== 'overall') {
-        const effectiveScope: LeaderboardScope =
-          scope === 'local' && !stateFilter ? 'global' : scope;
-        const effectiveState = scope === 'local' && !stateFilter ? null : stateFilter;
-        const list = await getSpeciesLeaderboard(
-          category,
-          effectiveScope,
-          effectiveState,
-          user?.id ?? null,
-          10000
-        );
-        setSpeciesRows(list);
-        if (user?.id) {
-          const mine = list.find((r) => r.id === user.id);
-          setMySpeciesRank(
-            mine
-              ? { rank: mine.rank, metric_value: mine.metric_value, metric_unit: mine.metric_unit }
-              : { rank: null, metric_value: 0, metric_unit: list[0]?.metric_unit ?? 'lbs' }
-          );
-        }
-        const userIds = [...new Set(list.map((r) => r.id))];
-        const [displayItems, profileExtras] = await Promise.all([
-          userIds.length > 0 ? getProfileDisplayItemsBatch(userIds) : Promise.resolve({}),
-          userIds.length > 0 ? getLeaderboardProfileExtras(userIds) : Promise.resolve({}),
-        ]);
-        setRows([]);
-        setMyRank(null);
-        setDisplayMap(displayItems);
-        setProfileExtrasMap(profileExtras);
-        setAvatarCacheBust(Date.now());
-        return;
-      }
-
       let list: AnglerLeaderboardRow[];
       let rankData: { rank: number | null; angler_rating: number; wins: number; podiums: number } | null = null;
 
@@ -360,7 +320,7 @@ export default function LeaderboardScreen() {
     } finally {
       setLoading(false);
     }
-  }, [scope, stateFilter, user?.id, category]);
+  }, [scope, stateFilter, user?.id]);
 
   useEffect(() => {
     load();
@@ -406,11 +366,9 @@ export default function LeaderboardScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>LEADERBOARDS</Text>
+            <Text style={styles.title}>TROPHY BOARD</Text>
             <Text style={styles.subtitle}>
-              {category === 'overall'
-                ? `${season?.name ?? 'Season 1'}${season && season.days_remaining >= 0 ? ` · ${season.days_remaining} days left` : ''}`
-                : `Best ${category.charAt(0).toUpperCase() + category.slice(1)} · ${scope === 'friends' ? 'Friends' : scope === 'local' ? 'Local' : 'Global'}`}
+              {`${season?.name ?? 'Season 1'}${season && season.days_remaining >= 0 ? ` · ${season.days_remaining} days left` : ''}`}
             </Text>
           </View>
           <View style={styles.headerRight} />
@@ -422,16 +380,14 @@ export default function LeaderboardScreen() {
           localLabel={stateFilter ?? undefined}
         />
         {scope === 'local' && !stateFilter && (
-          <Text style={styles.localHint}>Enable location to see local rankings</Text>
+          <Text style={styles.localHint}>Enable location to see local trophy standings</Text>
         )}
         {scope === 'friends' && !user?.id && (
-          <Text style={styles.localHint}>Sign in to see friends rankings</Text>
+          <Text style={styles.localHint}>Sign in to see friends trophy board</Text>
         )}
 
-        <SpeciesCategoryTabs value={category} onChange={setCategory} />
-
         {/* YOUR RANKING card — overall */}
-        {category === 'overall' && user?.id && myRank != null && (
+        {user?.id && myRank != null && (
           <View style={styles.yourRankSection}>
             <Text style={styles.yourRankLabel}>YOUR RANKING</Text>
             <View style={styles.yourRankCard}>
@@ -467,7 +423,7 @@ export default function LeaderboardScreen() {
                   if (gap <= 0) return null;
                   return (
                     <Text style={styles.awayFromPassing}>
-                      You are {gap} Trophies away from #{personAbove.rank}
+                      You are {gap} trophies away from #{personAbove.rank}
                     </Text>
                   );
                 })()}
@@ -483,49 +439,10 @@ export default function LeaderboardScreen() {
           </View>
         )}
 
-        {/* YOUR RANKING card — species */}
-        {category !== 'overall' && user?.id && mySpeciesRank != null && (
-          <View style={styles.yourRankSection}>
-            <Text style={styles.yourRankLabel}>YOUR RANKING</Text>
-            <View style={styles.yourRankCard}>
-              <View style={styles.yourRankIconWrap}>
-                {user?.avatarUrl ? (
-                  <Image
-                    source={{ uri: user.avatarUrl.startsWith('http') ? user.avatarUrl : getPublicUrl(MEDIA_BUCKET, user.avatarUrl) }}
-                    style={styles.yourRankAvatar}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Text style={styles.yourRankIcon}>
-                    {(user?.displayName || user?.username || 'You').slice(0, 2).toUpperCase() || '🎣'}
-                  </Text>
-                )}
-              </View>
-              <View style={styles.yourRankCenter}>
-                <Text style={styles.yourRankUsername} numberOfLines={1}>
-                  {user?.displayName || user?.username || 'You'}
-                </Text>
-                <Text style={styles.yourRankMeta}>
-                  #{mySpeciesRank.rank ?? '—'} {scope === 'friends' ? 'Friends' : scope === 'local' ? 'Local' : 'Global'}
-                  {userLocation && scope === 'local' ? ` - ${userLocation}` : ''}
-                </Text>
-              </View>
-              <View style={styles.yourRankRight}>
-                <Text style={styles.yourRankAR}>
-                  {mySpeciesRank.metric_value > 0
-                    ? `${Number(mySpeciesRank.metric_value).toFixed(1)} ${mySpeciesRank.metric_unit}`
-                    : '—'}
-                </Text>
-                <Text style={styles.yourRankARLabel}>BEST</Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {scope === 'local' && localFallbackToGlobal && stateFilter && category === 'overall' && (
+        {scope === 'local' && localFallbackToGlobal && stateFilter && (
           <View style={styles.fallbackBanner}>
             <Text style={styles.fallbackBannerText}>
-              No anglers in {stateFilter} yet — showing global rankings
+              No anglers in {stateFilter} yet — showing global trophy board
             </Text>
           </View>
         )}
@@ -534,55 +451,8 @@ export default function LeaderboardScreen() {
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={YELLOW} />
           </View>
-        ) : category !== 'overall' ? (
-          speciesRows.length === 0 ? (
-            <Text style={styles.empty}>
-              {scope === 'friends'
-                ? 'No friend catches for this species yet. Log a fish!'
-                : 'No catches for this species yet. Be the first!'}
-            </Text>
-          ) : (
-            <View style={styles.listWrap} collapsable={false}>
-              {speciesRows.map((r) => {
-                const rankStyle = getRankStyle(r.rank);
-                const isYou = user?.id === r.id;
-                const name = r.display_name?.trim() || r.username?.trim() || 'Angler';
-                const avUrl = getAvatarUrlWithCacheBust(r.avatar_url, avatarCacheBust);
-                return (
-                  <TouchableOpacity
-                    key={r.id}
-                    style={[styles.row, styles.rowCard, isYou && styles.rowYou]}
-                    onPress={() => router.push(`/user/${r.id}`)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.rankBadge, { backgroundColor: rankStyle.bg }]}>
-                      <Text style={[styles.rankBadgeText, { color: rankStyle.text }]}>{r.rank}</Text>
-                    </View>
-                    <View style={styles.avatarWrap}>
-                      {avUrl ? (
-                        <Image source={{ uri: avUrl }} style={styles.avatar} resizeMode="cover" />
-                      ) : (
-                        <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                          <Text style={styles.avatarPlaceholderEmoji}>🐟</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.info}>
-                      <Text style={styles.username}>{name}</Text>
-                      {r.state ? <Text style={styles.meta}>{r.state}</Text> : null}
-                    </View>
-                    <View style={styles.arCol}>
-                      <Text style={styles.arValue}>
-                        {Number(r.metric_value).toFixed(1)} {r.metric_unit}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )
         ) : rows.length === 0 ? (
-          <Text style={styles.empty}>No anglers ranked yet. Log catches to climb the board.</Text>
+          <Text style={styles.empty}>No trophies yet. Log fish to climb the Trophy Board.</Text>
         ) : (
           <>
             {/* Podium: 1st on top center; 2nd and 3rd below — same for global and local; use placeholders when <3 rows. */}

@@ -67,7 +67,7 @@ export function XPProgressBar({ levelInfo, compact = false, thick = false, prest
           <Animated.View style={[styles.compactBarFill, { width: widthInterp }]} />
         </View>
         {xpForNext > 0 && (
-          <Text style={styles.compactXp}>{xpInLevel}/{xpForNext} XP</Text>
+          <Text style={styles.compactXp}>{xpInLevel}/{xpForNext} 🏆</Text>
         )}
       </View>
     );
@@ -91,7 +91,7 @@ export function XPProgressBar({ levelInfo, compact = false, thick = false, prest
         </View>
         {xpForNext > 0 && (
           <Text style={styles.xpText}>
-            {xpInLevel} / {xpForNext} XP
+            {xpInLevel} / {xpForNext} 🏆
           </Text>
         )}
       </View>

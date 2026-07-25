@@ -423,7 +423,7 @@ export function LevelUpModal({
           {/* ── XP earned ── */}
           <Animated.View style={[s.xpRow, { opacity: xpNumOp, transform: [{ translateY: xpNumY }] }]}>
             <Text style={s.xpIcon}>{toIcon}</Text>
-            <Text style={s.xpNum}>+{xpDisplay} XP</Text>
+            <Text style={s.xpNum}>+{xpDisplay} 🏆</Text>
             <Text style={s.xpStar}>✦</Text>
           </Animated.View>
 
@@ -438,7 +438,7 @@ export function LevelUpModal({
             {/* XP to next level */}
             {xpToNext > 0 && nextLevel ? (
               <Text style={s.xpToNext}>
-                {xpToNext.toLocaleString()} XP until Level {nextLevel}
+                {xpToNext.toLocaleString()} 🏆 until Level {nextLevel}
                 {nextLevelTitle ? ` · ${nextLevelTitle}` : ''}
               </Text>
             ) : (

@@ -38,7 +38,7 @@ export function TournamentsAboutModal({ visible, onClose }: TournamentsAboutModa
                 {BULLET} Obviously fake entries can be removed and may result in a ban from tournaments.
               </Text>
               <Text style={styles.paragraph}>
-                {BULLET} Log catches to build your Snagged rank. Rankings use your best fish by species and your overall trophy score.
+                {BULLET} Log fish to earn trophies and climb the Trophy Board. Species Rankings use your best catch by weight or length.
               </Text>
               <Text style={styles.paragraph}>
                 {BULLET} Global shows everyone; Local filters by your region/state so you can compete with nearby anglers.

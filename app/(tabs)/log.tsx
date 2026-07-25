@@ -37,6 +37,7 @@ import { recordCatchForDailyQuest } from '@/src/lib/dailyQuests';
 import { PASSPORT_SPECIES } from '@/utils/gamificationData';
 
 /** XP granted by species rarity */
+/** Trophies awarded for logging this species (same scale as former XP). */
 function getSpeciesXP(species: string): number {
   const pid = findPassportSpeciesId(species);
   if (!pid) return 20;

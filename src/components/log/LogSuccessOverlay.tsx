@@ -496,7 +496,7 @@ export function LogSuccessOverlay({
                 <Animated.Text style={[styles.xpNumber, { color: rarityColor }]}>
                   +{displayXP}
                 </Animated.Text>
-                <Text style={[styles.xpLabel, { color: rarityColor + 'bb' }]}>XP EARNED</Text>
+                <Text style={[styles.xpLabel, { color: rarityColor + 'bb' }]}>🏆 TROPHIES EARNED</Text>
               </View>
             )}
 
@@ -506,7 +506,7 @@ export function LogSuccessOverlay({
                 <Text style={styles.progressLabel}>{levelAfter.icon} Lv {levelAfter.level} · {levelAfter.title}</Text>
                 {xpToNext > 0 && (
                   <Text style={[styles.progressHint, { color: rarityColor }]}>
-                    {xpToNext} XP to Lv {(levelAfter.level + 1)}
+                    {xpToNext} 🏆 to Lv {(levelAfter.level + 1)}
                   </Text>
                 )}
               </View>

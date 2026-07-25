@@ -1,26 +1,36 @@
 /**
- * Gamification types: XP, levels, passport
+ * Gamification types: trophies (formerly XP), levels, passport.
+ * Trophies are earned by logging fish. Storage field remains total_xp.
  */
 
-export const XP_PER_CATCH = 15; // base (common) — rarity multiplies this
-export const XP_PER_TOURNAMENT_ENTRY = 50;
-export const XP_PER_PERSONAL_RECORD = 200;
-/** XP awarded for placing in a tournament (1st–5th) */
+/** Trophies awarded per catch (base / common) — rarity multiplies this */
+export const TROPHIES_PER_CATCH = 15;
+/** @deprecated Use TROPHIES_PER_CATCH — alias for compatibility */
+export const XP_PER_CATCH = TROPHIES_PER_CATCH;
+
+/** @deprecated Tournaments no longer award trophies */
+export const XP_PER_TOURNAMENT_ENTRY = 0;
+/** Trophies for personal record catches */
+export const TROPHIES_PER_PERSONAL_RECORD = 200;
+/** @deprecated Use TROPHIES_PER_PERSONAL_RECORD */
+export const XP_PER_PERSONAL_RECORD = TROPHIES_PER_PERSONAL_RECORD;
+
+/** @deprecated Tournaments no longer award trophies */
 export const XP_TOURNAMENT_WIN: Record<1 | 2 | 3 | 4 | 5, number> = {
-  1: 500,
-  2: 300,
-  3: 150,
-  4: 100,
-  5: 50,
+  1: 0,
+  2: 0,
+  3: 0,
+  4: 0,
+  5: 0,
 };
 
-/** AR (Angler Rating) awarded per place — server-side; client reference only */
+/** @deprecated Tournaments no longer award trophies */
 export const AR_TOURNAMENT_PLACE: Record<1 | 2 | 3 | 4 | 5, number> = {
-  1: 100,
-  2: 60,
-  3: 30,
-  4: 20,
-  5: 10,
+  1: 0,
+  2: 0,
+  3: 0,
+  4: 0,
+  5: 0,
 };
 
 /**
@@ -57,7 +67,7 @@ export const LEVEL_UNLOCKS: Record<number, { label: string; type: 'FEATURE' | 'B
   2:  [{ label: 'Shoreman',            type: 'TITLE'   }, { label: 'Species Log',       type: 'FEATURE' }],
   3:  [{ label: 'Caster',              type: 'TITLE'   }, { label: 'Caster Badge',      type: 'BADGE'   }],
   4:  [{ label: 'Line Wetter',         type: 'TITLE'   }, { label: 'Logbook Filters',   type: 'FEATURE' }],
-  5:  [{ label: 'Angler',              type: 'TITLE'   }, { label: 'Tournaments',       type: 'FEATURE' }, { label: 'Veteran Badge',     type: 'BADGE'   }],
+  5:  [{ label: 'Angler',              type: 'TITLE'   }, { label: 'Rankings',          type: 'FEATURE' }, { label: 'Veteran Badge',     type: 'BADGE'   }],
   6:  [{ label: 'Rod Bender',          type: 'TITLE'   }, { label: 'Stories',           type: 'FEATURE' }],
   7:  [{ label: 'Keeper',              type: 'TITLE'   }, { label: 'Keeper Badge',      type: 'BADGE'   }],
   8:  [{ label: 'Deckhand',            type: 'TITLE'   }, { label: 'Crew Leaderboard',  type: 'FEATURE' }],

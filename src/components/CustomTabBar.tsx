@@ -6,47 +6,49 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
+
 const TAB_CONFIG = [
   {
-    name: 'Home',
-    route: '/(tabs)',
-    icon: 'home-outline',
-    iconActive: 'home',
+    name: 'Trophy Board',
+    route: '/(tabs)/leaderboard',
+    icon: 'trophy-outline' as const,
+    iconActive: 'trophy' as const,
   },
   {
-    name: 'Compete',
-    route: '/(tabs)/tournaments',
-    icon: 'trophy-outline',
-    iconActive: 'trophy',
+    name: 'Rankings',
+    route: '/(tabs)/rankings',
+    icon: 'medal-outline' as const,
+    iconActive: 'medal' as const,
+    emoji: '🥇',
   },
   {
     name: 'Log',
     route: '/(tabs)/log',
-    icon: 'add-circle',
-    iconActive: 'add-circle',
+    icon: 'add-circle' as const,
+    iconActive: 'add-circle' as const,
     isCenter: true,
   },
   {
     name: 'Logbook',
     route: '/(tabs)/logbook',
-    icon: 'book-outline',
-    iconActive: 'book',
+    icon: 'book-outline' as const,
+    iconActive: 'book' as const,
   },
   {
     name: 'Profile',
     route: '/(tabs)/profile',
-    icon: 'person-outline',
-    iconActive: 'person',
+    icon: 'person-outline' as const,
+    iconActive: 'person' as const,
   },
 ] as const;
 
 function isRouteActive(pathname: string, route: string): boolean {
-  if (route === '/(tabs)') {
-    return !pathname || pathname === '/' || pathname === '/(tabs)' || pathname.endsWith('index');
-  }
-  if (route.includes('tournaments')) return pathname.includes('tournaments');
-  if (route.includes('log')) return pathname.includes('log');
+  if (route.includes('leaderboard')) return pathname.includes('leaderboard');
+  if (route.includes('rankings')) return pathname.includes('rankings');
   if (route.includes('logbook')) return pathname.includes('logbook');
+  if (route.endsWith('/log') || route.includes('(tabs)/log')) {
+    return pathname.includes('/log') && !pathname.includes('logbook');
+  }
   if (route.includes('profile')) return pathname.includes('profile');
   return false;
 }
@@ -75,14 +77,13 @@ export function CustomTabBar() {
     <View style={styles.container}>
       {TAB_CONFIG.map((tab) => {
         const isActive = isRouteActive(pathname, tab.route);
-        const isCenter = tab.isCenter ?? false;
+        const isCenter = 'isCenter' in tab && tab.isCenter;
         const isProfile = tab.name === 'Profile';
-        const isTrophy = tab.name === 'Compete';
+        const isTrophy = tab.name === 'Trophy Board';
+        const useEmoji = 'emoji' in tab && !!tab.emoji;
 
         const handlePress = () => {
-          if (tab.route === '/(tabs)') {
-            router.replace('/(tabs)');
-          } else if (tab.route === '/(tabs)/log' && tab.isCenter) {
+          if (tab.route === '/(tabs)/log' && isCenter) {
             if (!user?.id) router.replace('/(tabs)/profile');
             else router.push('/camera');
           } else {
@@ -104,19 +105,9 @@ export function CustomTabBar() {
                 end={{ x: 1, y: 1 }}
                 style={styles.centerBtnInner}
               >
-                <Ionicons
-                  name={tab.icon as any}
-                  size={32}
-                  color="#FFF"
-                />
+                <Ionicons name={tab.icon} size={32} color="#FFF" />
               </LinearGradient>
-              <Text
-                style={[
-                  styles.label,
-                  styles.centerLabel,
-                  isActive && styles.labelActive,
-                ]}
-              >
+              <Text style={[styles.label, styles.centerLabel, isActive && styles.labelActive]}>
                 {tab.name}
               </Text>
             </TouchableOpacity>
@@ -124,21 +115,25 @@ export function CustomTabBar() {
         }
 
         return (
-          <View key={tab.name} ref={isProfile ? profileTabRef : isTrophy ? trophyTabRef : undefined} style={styles.tab} collapsable={false}>
-            <TouchableOpacity
-              style={styles.tabTouchable}
-              onPress={handlePress}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={(isActive ? tab.iconActive : tab.icon) as any}
-                size={24}
-                color={isActive ? colors.teal : 'rgba(214,238,248,0.35)'}
-              />
-              <Text
-                style={[styles.label, isActive && styles.labelActive]}
-                numberOfLines={1}
-              >
+          <View
+            key={tab.name}
+            ref={isProfile ? profileTabRef : isTrophy ? trophyTabRef : undefined}
+            style={styles.tab}
+            collapsable={false}
+          >
+            <TouchableOpacity style={styles.tabTouchable} onPress={handlePress} activeOpacity={0.7}>
+              {useEmoji ? (
+                <Text style={[styles.emojiIcon, isActive && styles.emojiIconActive]}>
+                  {(tab as { emoji?: string }).emoji}
+                </Text>
+              ) : (
+                <Ionicons
+                  name={(isActive ? tab.iconActive : tab.icon) as any}
+                  size={22}
+                  color={isActive ? colors.teal : 'rgba(214,238,248,0.35)'}
+                />
+              )}
+              <Text style={[styles.label, isActive && styles.labelActive]} numberOfLines={1}>
                 {tab.name}
               </Text>
             </TouchableOpacity>
@@ -152,9 +147,10 @@ export function CustomTabBar() {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingTop: 12,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingTop: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -169,19 +165,21 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 0,
     paddingVertical: 4,
   },
   tabTouchable: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
+    paddingHorizontal: 2,
   },
   centerBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: -24,
+    minWidth: 0,
   },
   centerBtnInner: {
     width: 52,
@@ -197,18 +195,29 @@ const styles = StyleSheet.create({
     }),
   },
   label: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: '700',
-    letterSpacing: 1.5,
+    letterSpacing: 0.2,
     color: 'rgba(214,238,248,0.35)',
     marginTop: 4,
-    textTransform: 'uppercase',
+    textAlign: 'center',
   },
   centerLabel: {
     marginTop: 6,
+    fontSize: 9,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   labelActive: {
     color: colors.teal,
+    opacity: 1,
+  },
+  emojiIcon: {
+    fontSize: 20,
+    lineHeight: 24,
+    opacity: 0.45,
+  },
+  emojiIconActive: {
     opacity: 1,
   },
 });

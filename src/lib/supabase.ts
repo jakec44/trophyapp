@@ -2043,6 +2043,10 @@ export async function deleteFile(_bucketIgnored: string, path: string) {
  * Uses max(local, remote) so we never overwrite server with a lower value.
  * Retries up to 2 times on failure.
  */
+/**
+ * Sync trophy progression (stored in total_xp) and Trophy Board score (angler_rating).
+ * Trophies are earned by logging fish — same amounts as the former XP system.
+ */
 export async function syncUserXp(userId: string, xp: number): Promise<void> {
   const sync = async (attempt: number): Promise<void> => {
     try {
@@ -2059,7 +2063,7 @@ export async function syncUserXp(userId: string, xp: number): Promise<void> {
       const toSave = Math.max(remote, xp);
       const { error } = await supabase
         .from('profiles')
-        .update({ total_xp: toSave })
+        .update({ total_xp: toSave, angler_rating: toSave })
         .eq('id', userId);
       if (error && attempt === 0) {
         await new Promise((r) => setTimeout(r, 800));
@@ -2264,23 +2268,43 @@ async function getFriendIdSet(userId: string): Promise<Set<string>> {
   return ids;
 }
 
-const SPECIES_MATCHERS: Record<'bass' | 'redfish' | 'tarpon' | 'snook', (s: string) => boolean> = {
+type SpeciesLeaderboardSpecies =
+  | 'bass'
+  | 'tarpon'
+  | 'snook'
+  | 'bluegill'
+  | 'jack-crevalle'
+  | 'catfish'
+  | 'redfish';
+
+const SPECIES_MATCHERS: Record<string, (s: string) => boolean> = {
   bass: (s) => s.toLowerCase().includes('bass'),
-  redfish: (s) => s.toLowerCase().includes('redfish'),
   tarpon: (s) => s.toLowerCase().includes('tarpon'),
   snook: (s) => s.toLowerCase().includes('snook'),
+  bluegill: (s) => s.toLowerCase().includes('bluegill'),
+  'jack-crevalle': (s) => {
+    const lower = s.toLowerCase();
+    return lower.includes('jack crevalle') || lower.includes('jack-crevalle') || lower.includes('crevalle');
+  },
+  catfish: (s) => s.toLowerCase().includes('catfish'),
+  redfish: (s) => s.toLowerCase().includes('redfish'),
 };
 
+function speciesUsesWeightMetric(species: string): boolean {
+  return species === 'bass' || species === 'tarpon' || species === 'catfish';
+}
+
 async function getSpeciesLeaderboardFallback(
-  species: 'bass' | 'redfish' | 'tarpon' | 'snook',
+  species: SpeciesLeaderboardSpecies | string,
   scope: LeaderboardScope,
   stateFilter: string | null,
   userId: string | null,
   limit: number
 ): Promise<SpeciesLeaderboardRow[]> {
-  const useWeight = species === 'bass' || species === 'tarpon';
+  const useWeight = speciesUsesWeightMetric(species);
   const unit: 'lbs' | 'in' = useWeight ? 'lbs' : 'in';
   const match = SPECIES_MATCHERS[species];
+  if (!match) return [];
 
   try {
     const { data: catches, error } = await supabase
@@ -2360,12 +2384,18 @@ async function getSpeciesLeaderboardFallback(
 }
 
 export async function getSpeciesLeaderboard(
-  species: 'bass' | 'redfish' | 'tarpon' | 'snook',
+  species: SpeciesLeaderboardSpecies | string,
   scope: LeaderboardScope,
   stateFilter: string | null,
   userId: string | null,
   limit = 10000
 ): Promise<SpeciesLeaderboardRow[]> {
+  // Prefer client fallback so new species (bluegill, jack-crevalle, catfish) work without migration.
+  const LEGACY_RPC_SPECIES = new Set(['bass', 'redfish', 'tarpon', 'snook']);
+  if (!LEGACY_RPC_SPECIES.has(species)) {
+    return getSpeciesLeaderboardFallback(species, scope, stateFilter, userId, limit);
+  }
+
   try {
     const { data, error } = await supabase.rpc('get_species_leaderboard', {
       p_species: species,

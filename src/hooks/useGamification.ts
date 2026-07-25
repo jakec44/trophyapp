@@ -185,18 +185,17 @@ export function useGamification(userId: string | null) {
     const newCount = totalTournaments + 1;
     setTotalTournaments(newCount);
     await AsyncStorage.setItem(keys.totalTournaments, String(newCount));
-    await addXp(XP_PER_TOURNAMENT_ENTRY);
-  }, [totalTournaments, addXp, keys.totalTournaments]);
+    // Tournaments no longer award trophies — trophies come from logging fish.
+  }, [totalTournaments, keys.totalTournaments]);
 
   /**
-   * Call when the current user places 1st–5th in a tournament.
-   * Awards XP, stores a local mock result so the win screen pops up.
+   * Tournament wins no longer award trophies. Kept for compatibility with existing callers.
    */
   const onTournamentWin = useCallback(async (
-    place: 1 | 2 | 3 | 4 | 5,
-    tournamentId: string,
-    tournamentName: string,
-    entry?: {
+    _place: 1 | 2 | 3 | 4 | 5,
+    _tournamentId: string,
+    _tournamentName: string,
+    _entry?: {
       catchId?: string;
       fishPhotoUrl?: string;
       fishSpecies?: string;
@@ -205,30 +204,8 @@ export function useGamification(userId: string | null) {
       unit?: string;
     }
   ) => {
-    const xpAmount = XP_TOURNAMENT_WIN[place];
-    await addXp(xpAmount);
-
-    if (!userId) return;
-
-    const result: TournamentResult = {
-      id: `local-${Date.now()}`,
-      tournament_id: tournamentId,
-      tournament_name: tournamentName,
-      user_id: userId,
-      place,
-      catch_id: entry?.catchId ?? null,
-      fish_photo_url: entry?.fishPhotoUrl ?? null,
-      fish_species: entry?.fishSpecies ?? null,
-      weight_lbs: entry?.weightLbs ?? null,
-      length_in: entry?.lengthIn ?? null,
-      unit: entry?.unit ?? 'in',
-      xp_awarded: xpAmount,
-      created_at: new Date().toISOString(),
-      seen_at: null,
-    };
-
-    await addMockTournamentResult(result);
-  }, [userId, addXp]);
+    // No-op: trophies are earned by logging fish, not tournament placements.
+  }, []);
 
   const onPersonalRecord = useCallback(async () => {
     const newCount = personalRecords + 1;

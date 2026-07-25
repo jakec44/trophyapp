@@ -279,7 +279,7 @@ export function ProfileHeader({
             </View>
             {xpInLevel != null && xpForNext != null && xpForNext > 0 && (
               <Text style={styles.xpTextRight}>
-                {xpInLevel} <Text style={styles.xpTextOf}>/ {xpForNext} XP</Text>
+                {xpInLevel} <Text style={styles.xpTextOf}>/ {xpForNext} 🏆</Text>
               </Text>
             )}
           </View>

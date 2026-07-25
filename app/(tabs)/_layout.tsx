@@ -36,15 +36,13 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' }, // Hide default, we use CustomTabBar
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Home' }} />
-        <Tabs.Screen name="tournaments" options={{ title: 'Compete' }} />
+        <Tabs.Screen name="index" options={{ title: 'Home', href: null }} />
+        <Tabs.Screen name="tournaments" options={{ title: 'Compete', href: null }} />
+        <Tabs.Screen name="leaderboard" options={{ title: 'Trophy Board' }} />
+        <Tabs.Screen name="rankings" options={{ title: 'Rankings' }} />
         <Tabs.Screen name="log" options={{ title: 'Log' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
         <Tabs.Screen name="friends" options={{ href: null }} />
-        <Tabs.Screen
-          name="leaderboard"
-          options={{ href: null }}
-        />
         <Tabs.Screen
           name="messages"
           options={{ href: null }}

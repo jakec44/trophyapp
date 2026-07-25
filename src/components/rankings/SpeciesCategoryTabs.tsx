@@ -1,22 +1,17 @@
 /**
- * Overall | Bass | Redfish | Tarpon | Snook category chips.
+ * Species chips for Rankings tab — driven by SPECIES_LEADERBOARD_OPTIONS.
  */
 
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { colors } from '@/utils/colors';
-import type { LeaderboardCategory } from '@/src/lib/snaggedRank';
-
-const CATEGORIES: { id: LeaderboardCategory; label: string }[] = [
-  { id: 'overall', label: 'Overall' },
-  { id: 'bass', label: 'Bass' },
-  { id: 'redfish', label: 'Redfish' },
-  { id: 'tarpon', label: 'Tarpon' },
-  { id: 'snook', label: 'Snook' },
-];
+import {
+  SPECIES_LEADERBOARD_OPTIONS,
+  type SpeciesLeaderboardSpecies,
+} from '@/src/lib/snaggedRank';
 
 interface SpeciesCategoryTabsProps {
-  value: LeaderboardCategory;
-  onChange: (v: LeaderboardCategory) => void;
+  value: SpeciesLeaderboardSpecies;
+  onChange: (v: SpeciesLeaderboardSpecies) => void;
 }
 
 export function SpeciesCategoryTabs({ value, onChange }: SpeciesCategoryTabsProps) {
@@ -27,7 +22,7 @@ export function SpeciesCategoryTabs({ value, onChange }: SpeciesCategoryTabsProp
       contentContainerStyle={styles.row}
       style={styles.scroll}
     >
-      {CATEGORIES.map((cat) => {
+      {SPECIES_LEADERBOARD_OPTIONS.map((cat) => {
         const active = value === cat.id;
         return (
           <TouchableOpacity
