@@ -445,7 +445,7 @@ export default function LogCatchScreen() {
           showSpeciesPicker={showSpeciesPicker}
           caughtSpecies={caughtSpecies}
           bottomPadding={bottomPadding}
-          onBack={() => router.replace('/(tabs)')}
+          onBack={() => router.replace('/(tabs)/leaderboard')}
           onTakePhoto={handleTakePhoto}
           onPickFromGallery={handlePickFromGallery}
           onPhotoCropped={setPhotoUri}

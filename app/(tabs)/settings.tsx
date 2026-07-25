@@ -82,7 +82,7 @@ export default function SettingsScreen() {
   const handleSignOut = async () => {
     const doSignOut = async () => {
       await signOut();
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/leaderboard');
     };
     if (Platform.OS === 'web') {
       if (window.confirm('Are you sure you want to sign out?')) {
@@ -219,7 +219,7 @@ export default function SettingsScreen() {
       const { clearPendingActions, clearGuestId } = await import('@/src/lib/pendingActions');
       await clearPendingActions();
       await clearGuestId();
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/leaderboard');
     } catch (e) {
       console.error('Restart as new user error:', e);
       Alert.alert('Error', 'Could not reset. Please try again.');
@@ -259,7 +259,7 @@ export default function SettingsScreen() {
                     try {
                       await deleteAccount(user.id);
                       await signOut();
-                      router.replace('/(tabs)');
+                      router.replace('/(tabs)/leaderboard');
                     } catch {
                       Alert.alert('Error', 'Could not delete account. Please try again or contact support.');
                     } finally {

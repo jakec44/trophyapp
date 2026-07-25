@@ -54,14 +54,14 @@ export default function LoginScreen() {
         });
         // If session exists (Confirm email off), user is already signed in
         if (result.session) {
-          router.replace('/(tabs)');
+          router.replace('/(tabs)/leaderboard');
         } else {
           Alert.alert('Account Created', 'Sign in with your email and password.');
           setIsSignUp(false);
         }
       } else {
         await signIn(trimEmail, trimPass);
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/leaderboard');
       }
     } catch (e: unknown) {
       const msg = (e as { message?: string })?.message ?? String(e);
@@ -92,7 +92,7 @@ export default function LoginScreen() {
         return;
       }
       await signInWithApple(identityToken, fullName ?? undefined);
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/leaderboard');
     } catch (e: unknown) {
       if ((e as { code?: string })?.code === 'ERR_REQUEST_CANCELED') {
         return;

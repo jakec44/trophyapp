@@ -89,7 +89,7 @@ export default function PaywallScreen() {
       const result = await purchasePackageByIdentifier(id);
       if (result.success) {
         await refreshProfile();
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/leaderboard');
       } else {
         setError(result.error ?? 'Purchase failed.');
       }
@@ -105,7 +105,7 @@ export default function PaywallScreen() {
       const result = await restorePurchases();
       if (result.success) {
         await refreshProfile();
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/leaderboard');
       } else {
         setError(result.error ?? 'No purchases to restore.');
       }
@@ -114,7 +114,7 @@ export default function PaywallScreen() {
     }
   };
 
-  const handleNotNow = () => router.replace('/(tabs)');
+  const handleNotNow = () => router.replace('/(tabs)/leaderboard');
 
   if (!ready) {
     return (

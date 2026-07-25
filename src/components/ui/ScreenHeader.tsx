@@ -20,7 +20,7 @@ export function ScreenHeader({ rightContent, subtitle, style }: ScreenHeaderProp
 
   return (
     <View style={[styles.container, style]}>
-      <TouchableOpacity style={styles.left} onPress={() => router.replace('/(tabs)')} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.left} onPress={() => router.replace('/(tabs)/leaderboard')} activeOpacity={0.7}>
         <Text style={styles.title}>Snagged</Text>
         {subtitle ? <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text> : null}
       </TouchableOpacity>

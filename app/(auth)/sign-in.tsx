@@ -61,7 +61,7 @@ export default function SignInScreen() {
     setLoading(true);
     try {
       await signIn(email.trim(), password.trim());
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/leaderboard');
     } catch (e: unknown) {
       const msg = (e as { message?: string })?.message ?? String(e);
       const isInvalidCreds =
