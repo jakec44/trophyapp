@@ -17,8 +17,8 @@ const TAB_CONFIG = [
   {
     name: 'Rankings',
     route: '/(tabs)/rankings',
-    icon: 'medal-outline' as const,
-    iconActive: 'medal' as const,
+    icon: 'ribbon-outline' as const,
+    iconActive: 'ribbon' as const,
     emoji: '🥇',
   },
   {

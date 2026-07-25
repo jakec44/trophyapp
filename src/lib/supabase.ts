@@ -2061,15 +2061,24 @@ export async function syncUserXp(userId: string, xp: number): Promise<void> {
       }
       const remote = typeof profile?.total_xp === 'number' ? profile.total_xp : 0;
       const toSave = Math.max(remote, xp);
+      // Update trophies (total_xp) first; angler_rating separately so one failure can't block progress sync.
       const { error } = await supabase
         .from('profiles')
-        .update({ total_xp: toSave, angler_rating: toSave })
+        .update({ total_xp: toSave })
         .eq('id', userId);
       if (error && attempt === 0) {
         await new Promise((r) => setTimeout(r, 800));
         return sync(1);
       }
-      if (error) console.warn('[syncUserXp]', error.message);
+      if (error) {
+        console.warn('[syncUserXp]', error.message);
+        return;
+      }
+      const { error: arErr } = await supabase
+        .from('profiles')
+        .update({ angler_rating: toSave })
+        .eq('id', userId);
+      if (arErr) console.warn('[syncUserXp] angler_rating:', arErr.message);
     } catch (err) {
       if (attempt === 0) {
         await new Promise((r) => setTimeout(r, 800));

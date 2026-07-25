@@ -11,13 +11,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   getLevelFromXp,
   XP_PER_CATCH,
-  XP_PER_TOURNAMENT_ENTRY,
   XP_PER_PERSONAL_RECORD,
-  XP_TOURNAMENT_WIN,
 } from '@/src/types/gamification';
 
-import { addMockTournamentResult } from '@/src/hooks/useTournamentResults';
-import type { TournamentResult } from '@/src/types/tournamentResults';
 import { getUserCatchesForPassport, syncUserXp, getUserProfile } from '@/src/lib/supabase';
 import { findPassportSpeciesId } from '@/src/lib/speciesMapper';
 

@@ -10,6 +10,11 @@ import { OnboardingOverlayContext } from '@/src/context/OnboardingOverlayContext
 const ONBOARDING_NEEDS_PROFILE = 'onboarding_needs_profile';
 const ONBOARDING_FIRST_CATCH_PENDING = 'onboarding_first_catch_pending';
 
+/** First visible tab — avoid /(tabs) resolving to hidden Home (index). */
+export const unstable_settings = {
+  initialRouteName: 'leaderboard',
+};
+
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const router = useRouter();

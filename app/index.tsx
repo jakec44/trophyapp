@@ -1,10 +1,10 @@
 /**
- * Root index: always send to tabs. Signed-out users can browse;
- * sign-in is requested via AuthGateModal when they try to log fish, enter tournaments, etc.
+ * Root index: land on Trophy Board (first visible tab).
+ * Home is hidden from the tab bar; redirecting to /(tabs) alone can freeze Expo Router.
  */
 
 import { Redirect } from 'expo-router';
 
 export default function Index() {
-  return <Redirect href="/(tabs)" />;
+  return <Redirect href="/(tabs)/leaderboard" />;
 }
