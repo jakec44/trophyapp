@@ -360,8 +360,10 @@ export default function LeaderboardScreen() {
           <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/tournaments'); }}
+            onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/rankings'); }}
             hitSlop={12}
+            style={{ opacity: 0 }}
+            disabled
           >
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
