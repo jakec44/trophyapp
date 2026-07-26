@@ -372,6 +372,7 @@ export default function LeaderboardScreen() {
             <Text style={styles.subtitle}>
               {`${season?.name ?? 'Season 1'}${season && season.days_remaining >= 0 ? ` · ${season.days_remaining} days left` : ''}`}
             </Text>
+            <Text style={styles.devBadge}>DEV BUILD · ee8fe7d · NEW TABS</Text>
           </View>
           <View style={styles.headerRight} />
         </View>
@@ -642,6 +643,18 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: 2,
     letterSpacing: 0.5,
+  },
+  devBadge: {
+    marginTop: 8,
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#020b14',
+    backgroundColor: '#00e5c8',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    textAlign: 'center',
+    overflow: 'hidden',
   },
 
   toggleWrap: { marginBottom: 16 },
