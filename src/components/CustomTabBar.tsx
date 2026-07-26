@@ -4,7 +4,6 @@ import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
-import { useAuthContext } from '@/src/context/AuthContext';
 import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 
 const TAB_CONFIG = [
@@ -62,7 +61,6 @@ function measureInWindow(ref: React.RefObject<View>): Promise<{ x: number; y: nu
 export function CustomTabBar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useAuthContext();
   const winContext = useTournamentWinCheckContext();
   const profileTabRef = useRef<View>(null);
   const trophyTabRef = useRef<View>(null);
@@ -84,8 +82,7 @@ export function CustomTabBar() {
 
         const handlePress = () => {
           if (tab.route === '/(tabs)/log' && isCenter) {
-            if (!user?.id) router.replace('/(tabs)/profile');
-            else router.push('/camera');
+            router.push('/camera');
           } else {
             router.replace(tab.route as any);
           }

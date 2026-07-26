@@ -16,7 +16,6 @@ import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { colors } from '@/utils/colors';
 import { useAuthContext } from '@/src/context/AuthContext';
-import { useOnboardingOverlay } from '@/src/context/OnboardingOverlayContext';
 import { useHomeTournaments } from '@/src/hooks/useHomeTournaments';
 import { StoriesRow } from '@/src/components/home/StoriesRow';
 import { FeedPostCard } from '@/src/components/home/FeedPostCard';
@@ -33,11 +32,6 @@ import { Ionicons } from '@expo/vector-icons';
 import Feather from '@expo/vector-icons/Feather';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
 import { PASSPORT_SPECIES } from '@/utils/gamificationData';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const ONBOARDING_HAS_SEEN = 'hasSeenOnboarding';
-const ONBOARDING_HOME_DISMISSED = 'hasDismissedHomeOverlay';
-
 function StatsBar() {
   const { levelInfo, caughtSpecies } = useGamificationContext();
   const totalCaught = caughtSpecies.size;
@@ -167,57 +161,6 @@ export default function HomeScreen() {
   const { user } = useAuthContext();
   const bottomPadding = useBottomSafePadding();
   const [createPostVisible, setCreatePostVisible] = useState(false);
-  const [showOnboardingOverlay, setShowOnboardingOverlay] = useState<boolean | null>(null);
-  const arrowAnim = useRef(new Animated.Value(0)).current;
-  const { setHideTabBar } = useOnboardingOverlay();
-
-  useEffect(() => {
-    setHideTabBar(showOnboardingOverlay === true);
-    return () => setHideTabBar(false);
-  }, [showOnboardingOverlay, setHideTabBar]);
-
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      (async () => {
-        try {
-          const [seen, dismissed] = await Promise.all([
-            AsyncStorage.getItem(ONBOARDING_HAS_SEEN),
-            AsyncStorage.getItem(ONBOARDING_HOME_DISMISSED),
-          ]);
-          if (!cancelled) {
-            setShowOnboardingOverlay(seen !== '1' && dismissed !== '1');
-          }
-        } catch {
-          if (!cancelled) setShowOnboardingOverlay(false);
-        }
-      })();
-      return () => { cancelled = true; };
-    }, [])
-  );
-
-  useEffect(() => {
-    if (!showOnboardingOverlay) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(arrowAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        Animated.timing(arrowAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [showOnboardingOverlay, arrowAnim]);
-
-  const handleOnboardingLogPress = useCallback(async () => {
-    try {
-      await AsyncStorage.setItem(ONBOARDING_HOME_DISMISSED, '1');
-      setShowOnboardingOverlay(false);
-      router.push('/camera');
-    } catch {
-      setShowOnboardingOverlay(false);
-      router.push('/camera');
-    }
-  }, [router]);
 
   const {
     refreshing,
@@ -468,42 +411,6 @@ export default function HomeScreen() {
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
-      {/* First-time onboarding overlay: dark overlay, avatar, text, arrow; only proceed by tapping Log */}
-      {showOnboardingOverlay === true && (
-        <View style={[StyleSheet.absoluteFill, styles.onboardingOverlay]} pointerEvents="box-none">
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => {}} />
-          <View style={styles.onboardingContent} pointerEvents="none">
-            <View style={styles.onboardingAvatarBubble}>
-              <Text style={styles.onboardingAvatarEmoji}>🎣</Text>
-            </View>
-            <Text style={styles.onboardingText}>Let's get you started. Log your first fish.</Text>
-            <Animated.View
-              style={[
-                styles.onboardingArrowWrap,
-                {
-                  opacity: arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }),
-                  transform: [
-                    { translateY: arrowAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }) },
-                  ],
-                },
-              ]}
-            >
-              <Ionicons name="chevron-down" size={32} color="#fff" />
-            </Animated.View>
-          </View>
-          <View style={styles.onboardingLogButtonWrap} pointerEvents="box-none">
-            <TouchableOpacity
-              style={styles.onboardingLogButton}
-              onPress={handleOnboardingLogPress}
-              activeOpacity={0.9}
-            >
-              <Feather name="camera" size={26} color="#FFFFFF" />
-              <Text style={styles.onboardingLogButtonText}>Log a Catch</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
       <CreatePostModal
         visible={createPostVisible}
         onClose={() => setCreatePostVisible(false)}
@@ -679,75 +586,5 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 24,
-  },
-  onboardingOverlay: {
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'flex-end',
-    zIndex: 1000,
-  },
-  onboardingBlocker: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
-  onboardingContent: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 140,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  onboardingAvatarBubble: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(0,229,200,0.35)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  onboardingAvatarEmoji: {
-    fontSize: 32,
-  },
-  onboardingText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  onboardingArrowWrap: {
-    marginBottom: 8,
-  },
-  onboardingLogButtonWrap: {
-    paddingHorizontal: 16,
-    paddingBottom: 100,
-  },
-  onboardingLogButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: colors.brightBlue,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginHorizontal: 0,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0066FF',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-      },
-      android: { elevation: 4 },
-    }),
-  },
-  onboardingLogButtonText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
   },
 });

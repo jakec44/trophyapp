@@ -12,7 +12,6 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -159,8 +158,6 @@ export default function ProfileEditScreen() {
         location: location.trim() || null,
       });
       await refreshProfile();
-      await AsyncStorage.setItem('hasSeenOnboarding', '1').catch(() => {});
-      await AsyncStorage.removeItem('onboarding_needs_profile').catch(() => {});
       router.back();
     } catch (e) {
       console.error('Profile save failed:', e);
