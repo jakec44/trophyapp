@@ -55,19 +55,20 @@ const TEAL = colors.teal;
 const ACCENT_BLUE = TEAL;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+/** App Store / published Compete chips (full tournament catalog). */
 const FILTER_IDS: { id: string; label: string }[] = [
-  { id: 'tournament-bass', label: 'Bass' },
+  { id: 'biggest-fish-this-week', label: 'Weekly Biggest' },
+  { id: 'tournament-smallest', label: 'Weekly Rarest' },
   { id: 'tournament-redfish', label: 'Redfish' },
+  { id: 'tournament-bass', label: 'Bass' },
   { id: 'tournament-snook', label: 'Snook' },
+  { id: 'tournament-flounder', label: 'Flounder' },
+  { id: 'tournament-striper', label: 'Striper' },
   { id: 'tournament-tarpon', label: 'Tarpon' },
+  { id: 'tournament-freshwater-trout', label: 'Freshwater Trout' },
 ];
 
-const FEATURED_IDS = [
-  'tournament-bass',
-  'tournament-redfish',
-  'tournament-snook',
-  'tournament-tarpon',
-];
+const FEATURED_IDS = FILTER_IDS.map((f) => f.id);
 
 const SELECTED_TOURNAMENT_KEY = '@Snagged/selectedTournamentId';
 
@@ -87,7 +88,7 @@ export default function TournamentsScreen() {
     [user?.id, friends]
   );
   const [featuredCompetitionId, setFeaturedCompetitionIdState] = useState(
-    deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : FEATURED_IDS[0]
+    deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : 'biggest-fish-this-week'
   );
   const hasRestoredSelection = useRef(false);
 

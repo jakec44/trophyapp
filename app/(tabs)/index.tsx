@@ -30,7 +30,7 @@ export default function HomeScreen() {
 
         <HomeDestinationTile
           title="TOURNAMENTS"
-          subtitle="Bass, Redfish, Snook, Tarpon — enter live competitions and climb the boards."
+          subtitle="Weekly Biggest, Weekly Rarest, Redfish, Bass, Snook, and more — enter and climb the boards."
           icon="medal-outline"
           accent={colors.teal}
           delayMs={0}
