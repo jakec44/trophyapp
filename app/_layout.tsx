@@ -91,6 +91,10 @@ export default function RootLayout() {
       <Stack.Screen name="camera" />
       <Stack.Screen name="photo-picker" />
       <Stack.Screen name="fish-image-editor" />
+      <Stack.Screen
+        name="compete"
+        options={{ title: 'Compete', animation: 'slide_from_right' }}
+      />
       <Stack.Screen name="search" options={{ title: 'Search' }} />
       <Stack.Screen name="user/[userId]" options={{ title: 'Profile' }} />
       <Stack.Screen name="tournament/[id]" options={{ title: 'Tournament' }} />

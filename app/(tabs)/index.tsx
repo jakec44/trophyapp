@@ -30,11 +30,11 @@ export default function HomeScreen() {
 
         <HomeDestinationTile
           title="TOURNAMENTS"
-          subtitle="Biggest Fish Overall, Redfish, Bass, Snook, and more — same Compete layout as 1.2.2."
+          subtitle="Biggest Fish Overall, Redfish, Bass, Snook, Flounder, Striper, Tarpon, Trout, Smallest — App Store 1.2.2 Compete."
           icon="medal-outline"
           accent={colors.teal}
           delayMs={0}
-          onPress={() => router.push('/(tabs)/tournaments')}
+          onPress={() => router.push('/compete')}
         />
 
         <HomeDestinationTile

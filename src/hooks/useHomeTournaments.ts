@@ -8,7 +8,6 @@ import { getEntryMetricValue } from '@/src/types/tournaments';
 import {
   fetchHomeTournaments,
   voteOnEntry,
-  SPECIES_MATCH,
 } from '@/src/api/tournaments';
 import { getUserCatches, getProfileDisplayItemsBatch } from '@/src/lib/supabase';
 
@@ -199,10 +198,13 @@ function computeCouldPlace(
     if (metricType === 'VOTES_UP') continue;
 
     const matchesSpecies = (species?: string) => {
-      const matcher = SPECIES_MATCH[tournament.id];
-      if (matcher) return matcher(species || '');
       const s = (species || '').toLowerCase();
       if (tournament.type === 'BIGGEST_FISH') return true;
+      if (tournament.type === 'BIGGEST_BASS') return s.includes('bass');
+      if (tournament.type === 'BIGGEST_REDFISH') return s.includes('redfish');
+      if (tournament.type === 'BIGGEST_SNOOK') return s.includes('snook');
+      if (tournament.type === 'BIGGEST_FLOUNDER') return s.includes('flounder');
+      if (tournament.type === 'BIGGEST_STRIPER') return s.includes('striped') || s.includes('striper');
       if (tournament.type === 'SMALLEST_FISH') return !s.includes('minnow') && !s.includes('shad') && !s.includes('baitfish');
       return true;
     };
