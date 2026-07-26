@@ -30,7 +30,7 @@ export default function HomeScreen() {
 
         <HomeDestinationTile
           title="TOURNAMENTS"
-          subtitle="Biggest Fish Overall, Redfish, Bass, Snook, Flounder, Striper, Tarpon, Trout, Smallest — App Store 1.2.2 Compete."
+          subtitle="Weekly Biggest, Weekly Rarest, Bass, and more — enter, compete, win trophies."
           icon="medal-outline"
           accent={colors.teal}
           delayMs={0}
