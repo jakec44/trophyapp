@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router';
 export function SnaggedWordmark() {
   const router = useRouter();
   return (
-    <TouchableOpacity onPress={() => router.replace('/(tabs)/index')} activeOpacity={0.7} hitSlop={8}>
+    <TouchableOpacity onPress={() => router.replace('/(tabs)')} activeOpacity={0.7} hitSlop={8}>
       <Text style={styles.text}>Snagged</Text>
     </TouchableOpacity>
   );

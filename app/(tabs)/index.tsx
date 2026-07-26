@@ -34,7 +34,7 @@ export default function HomeScreen() {
           icon="medal-outline"
           accent={colors.teal}
           delayMs={0}
-          onPress={() => router.replace('/(tabs)/tournaments' as any)}
+          onPress={() => router.replace('/(tabs)/tournaments')}
         />
 
         <HomeDestinationTile

@@ -17,7 +17,7 @@ const TAB_CONFIG = [
   },
   {
     name: 'Home',
-    route: '/(tabs)/index',
+    route: '/(tabs)',
     icon: 'home-outline' as const,
     iconActive: 'home' as const,
   },
@@ -44,7 +44,14 @@ const TAB_CONFIG = [
 
 function isRouteActive(pathname: string, route: string): boolean {
   if (route.includes('tournaments')) return pathname.includes('tournaments');
-  if (route.includes('index') || route === '/(tabs)/index') {
+  if (route === '/(tabs)') {
+    // Home tab = tabs index (not tournaments/log/profile/etc.)
+    if (pathname.includes('tournaments')) return false;
+    if (pathname.includes('logbook')) return false;
+    if (pathname.includes('/log')) return false;
+    if (pathname.includes('profile')) return false;
+    if (pathname.includes('leaderboard')) return false;
+    if (pathname.includes('rankings')) return false;
     return (
       pathname === '/' ||
       pathname === '/index' ||
@@ -93,6 +100,8 @@ export function CustomTabBar() {
           if (tab.route === '/(tabs)/log' && isCenter) {
             if (!user?.id) router.replace('/(tabs)/profile');
             else router.push('/camera');
+          } else if (tab.route === '/(tabs)') {
+            router.replace('/(tabs)');
           } else {
             router.replace(tab.route as any);
           }

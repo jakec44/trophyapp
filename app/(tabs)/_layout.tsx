@@ -14,48 +14,29 @@ export default function TabsLayout() {
   return (
     <View style={styles.container}>
       <Tabs
+        initialRouteName="tournaments"
         screenOptions={{
           headerShown: false,
           tabBarShowLabel: false,
           tabBarStyle: { display: 'none' }, // Hide default, we use CustomTabBar
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Home' }} />
+        {/* Compete first — matches App Store tab order / initialRouteName */}
         <Tabs.Screen name="tournaments" options={{ title: 'Compete' }} />
+        <Tabs.Screen name="index" options={{ title: 'Home' }} />
+        <Tabs.Screen name="log" options={{ title: 'Log' }} />
+        <Tabs.Screen name="logbook" options={{ title: 'Logbook' }} />
+        <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
         <Tabs.Screen name="leaderboard" options={{ title: 'Trophies', href: null }} />
         <Tabs.Screen name="rankings" options={{ title: 'Rankings', href: null }} />
-        <Tabs.Screen name="log" options={{ title: 'Log' }} />
-        <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
         <Tabs.Screen name="friends" options={{ href: null }} />
-        <Tabs.Screen
-          name="messages"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="trophy-room"
-          options={{ href: null }}
-        />
-        <Tabs.Screen name="logbook" options={{ title: 'Logbook' }} />
-        <Tabs.Screen
-          name="profile-edit"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="passport"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="badges"
-          options={{ href: null }}
-        />
-        <Tabs.Screen
-          name="notifications"
-          options={{ href: null }}
-        />
+        <Tabs.Screen name="messages" options={{ href: null }} />
+        <Tabs.Screen name="settings" options={{ href: null }} />
+        <Tabs.Screen name="trophy-room" options={{ href: null }} />
+        <Tabs.Screen name="profile-edit" options={{ href: null }} />
+        <Tabs.Screen name="passport" options={{ href: null }} />
+        <Tabs.Screen name="badges" options={{ href: null }} />
+        <Tabs.Screen name="notifications" options={{ href: null }} />
       </Tabs>
       <View
         style={[
