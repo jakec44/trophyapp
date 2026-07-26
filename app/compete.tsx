@@ -1,5 +1,5 @@
 /**
- * Stack alias — App Store Compete UI lives on the Compete tab.
+ * Stack alias → Compete tab (App Store layout).
  */
 import { Redirect } from 'expo-router';
 
