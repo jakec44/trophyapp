@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CustomTabBar } from '@/src/components/CustomTabBar';
 
-/** App Store tabs: Compete · Home · Log · Logbook · Profile */
+/** Full Compete UI: Home · Compete · Log · Logbook · Profile */
 export const unstable_settings = {
   initialRouteName: 'tournaments',
 };
@@ -21,7 +21,6 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' }, // Hide default, we use CustomTabBar
         }}
       >
-        {/* Compete first — matches App Store tab order / initialRouteName */}
         <Tabs.Screen name="tournaments" options={{ title: 'Compete' }} />
         <Tabs.Screen name="index" options={{ title: 'Home' }} />
         <Tabs.Screen name="log" options={{ title: 'Log' }} />
