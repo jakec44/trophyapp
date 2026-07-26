@@ -21,8 +21,7 @@ export type AuthGateAction =
   | 'enter_tournament'
   | 'hype_comment'
   | 'view_rank'
-  | 'view_profile'
-  | 'onboarding_first_catch';
+  | 'view_profile';
 
 const MESSAGES: Record<AuthGateAction, { title: string; message: string }> = {
   log_catch: {
@@ -45,10 +44,6 @@ const MESSAGES: Record<AuthGateAction, { title: string; message: string }> = {
     title: 'Sign in to view your profile',
     message: 'Sign in to set up your profile, see your stats, and edit your username and photo.',
   },
-  onboarding_first_catch: {
-    title: 'Save Your Catch',
-    message: 'Sign in to save your fish and start your profile.',
-  },
 };
 
 interface AuthGateModalProps {
@@ -61,7 +56,6 @@ export function AuthGateModal({ visible, onClose, action }: AuthGateModalProps) 
   const router = useRouter();
   const [appleLoading, setAppleLoading] = useState(false);
   const { title, message } = MESSAGES[action];
-  const blocking = action === 'onboarding_first_catch';
 
   const handleAppleSignIn = async () => {
     const available = Platform.OS === 'ios' && (await AppleAuthentication.isAvailableAsync());
@@ -113,9 +107,9 @@ export function AuthGateModal({ visible, onClose, action }: AuthGateModalProps) 
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={blocking ? undefined : onClose}
+      onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={blocking ? undefined : onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
           <TouchableOpacity
             style={styles.closeButton}
@@ -162,15 +156,13 @@ export function AuthGateModal({ visible, onClose, action }: AuthGateModalProps) 
                 <Text style={styles.primaryBtnText}>Sign in with email</Text>
               </TouchableOpacity>
             )}
-            {!blocking && (
-              <TouchableOpacity
-                style={styles.secondaryBtn}
-                onPress={onClose}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.secondaryBtnText}>Maybe Later</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              style={styles.secondaryBtn}
+              onPress={onClose}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.secondaryBtnText}>Maybe Later</Text>
+            </TouchableOpacity>
           </View>
         </Pressable>
       </Pressable>

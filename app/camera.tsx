@@ -16,80 +16,22 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Linking from 'expo-linking';
 import Feather from '@expo/vector-icons/Feather';
 import { colors } from '@/utils/colors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setPickedImageBase64 } from '@/src/lib/pickedImageStore';
-import { useAuthContext } from '@/src/context/AuthContext';
 
 const GOLD = colors.gold;
-const ONBOARDING_HAS_SEEN = 'hasSeenOnboarding';
-const ONBOARDING_HOME_DISMISSED = 'hasDismissedHomeOverlay';
-const ONBOARDING_PHOTO_HINT_SEEN = 'onboarding_photo_hint_seen';
 
 export default function CameraScreen() {
   const router = useRouter();
-  const { user } = useAuthContext();
   const [permission, requestPermission] = useCameraPermissions();
-  const [onboardingGuestChecked, setOnboardingGuestChecked] = useState(false);
-  const [allowOnboardingGuest, setAllowOnboardingGuest] = useState(false);
-
-  useEffect(() => {
-    if (user?.id) return;
-    let cancelled = false;
-    (async () => {
-      const [seen, dismissed] = await Promise.all([
-        AsyncStorage.getItem(ONBOARDING_HAS_SEEN),
-        AsyncStorage.getItem(ONBOARDING_HOME_DISMISSED),
-      ]);
-      if (!cancelled) {
-        setAllowOnboardingGuest(seen !== '1' && dismissed === '1');
-        setOnboardingGuestChecked(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (user?.id || !onboardingGuestChecked) return;
-    if (!allowOnboardingGuest) router.replace('/(tabs)/profile');
-  }, [user?.id, onboardingGuestChecked, allowOnboardingGuest, router]);
 
   const cameraRef = useRef<CameraView>(null);
   const [capturing, setCapturing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-  const [showPhotoHint, setShowPhotoHint] = useState(false);
-
   useEffect(() => {
     if (!permission?.granted && permission?.canAskAgain) {
       requestPermission();
     }
   }, [permission, requestPermission]);
-
-  useEffect(() => {
-    let cancelled = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    (async () => {
-      try {
-        const [seen, dismissed, hintSeen] = await Promise.all([
-          AsyncStorage.getItem(ONBOARDING_HAS_SEEN),
-          AsyncStorage.getItem(ONBOARDING_HOME_DISMISSED),
-          AsyncStorage.getItem(ONBOARDING_PHOTO_HINT_SEEN),
-        ]);
-        if (!cancelled && seen !== '1' && dismissed === '1' && hintSeen !== '1') {
-          setShowPhotoHint(true);
-          timeoutId = setTimeout(() => {
-            setShowPhotoHint(false);
-            AsyncStorage.setItem(ONBOARDING_PHOTO_HINT_SEEN, '1');
-          }, 6000);
-        }
-      } catch {
-        if (!cancelled) setShowPhotoHint(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, []);
 
   const handleCapture = async () => {
     if (!cameraRef.current || !permission?.granted || capturing || !cameraReady) return;
@@ -119,8 +61,6 @@ export default function CameraScreen() {
 
   const handleOpenPhotos = async () => {
     try {
-      setShowPhotoHint(false);
-      AsyncStorage.setItem(ONBOARDING_PHOTO_HINT_SEEN, '1');
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
@@ -251,11 +191,6 @@ export default function CameraScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        {showPhotoHint && (
-          <View style={styles.photoHintWrap}>
-            <Text style={styles.photoHintText}>You can also choose a fish from your photos</Text>
-          </View>
-        )}
       </CameraView>
     </SafeAreaView>
   );
@@ -397,21 +332,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.accentBlue,
-  },
-  photoHintWrap: {
-    position: 'absolute',
-    bottom: 100,
-    left: 16,
-    right: 16,
-    alignItems: 'center',
-  },
-  photoHintText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.85)',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    overflow: 'hidden',
   },
 });

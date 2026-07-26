@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -20,14 +20,10 @@ import { useGamificationContext } from '@/src/context/GamificationContext';
 import { useFeedContext } from '@/src/context/FeedContext';
 import { useBottomSafePadding } from '@/src/components/ScreenContainer';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LogCatchContent } from '@/src/components/log/LogCatchContent';
 import { LogSuccessOverlay } from '@/src/components/log/LogSuccessOverlay';
 import { TackleBoxUnlockModal } from '@/src/components/gamification/TackleBoxUnlockModal';
 import { useCatchDraft } from '@/src/hooks/useCatchDraft';
-
-const ONBOARDING_NEEDS_PROFILE = 'onboarding_needs_profile';
-const ONBOARDING_FIRST_CATCH_PENDING = 'onboarding_first_catch_pending';
 import { logCatch } from '@/src/lib/catches';
 import { awardSpeciesBadgeIfEligible, type SpeciesBadgeUnlock } from '@/src/lib/speciesMastery';
 import { addPendingCreateCatch } from '@/src/lib/pendingActions';
@@ -109,31 +105,6 @@ export default function LogCatchScreen() {
 
   const { caughtSpecies } = gamification;
 
-  const [onboardingGuestChecked, setOnboardingGuestChecked] = useState(false);
-  const [allowOnboardingGuest, setAllowOnboardingGuest] = useState(false);
-  useEffect(() => {
-    if (user?.id) return;
-    let cancelled = false;
-    (async () => {
-      const [hasSeen, hasDismissed] = await Promise.all([
-        AsyncStorage.getItem('hasSeenOnboarding'),
-        AsyncStorage.getItem('hasDismissedHomeOverlay'),
-      ]);
-      if (!cancelled) {
-        setAllowOnboardingGuest(hasSeen !== '1' && hasDismissed === '1');
-        setOnboardingGuestChecked(true);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [user?.id]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (user?.id || !onboardingGuestChecked) return;
-      if (!allowOnboardingGuest) router.replace('/(tabs)/profile');
-    }, [user?.id, onboardingGuestChecked, allowOnboardingGuest, router])
-  );
-
   // Safety net: if submit stays loading too long (e.g. timer throttled on iOS), unstick the UI
   const SUBMIT_MAX_MS = 65000;
   useEffect(() => {
@@ -209,7 +180,7 @@ export default function LogCatchScreen() {
           photoUri: photoUri ?? undefined,
           taken_at: takenAt,
         });
-        // Guest — show same XP/success overlay, then they go to Profile to sign in on "Continue Fishing"
+        // Guest — queue catch locally and show the same success overlay
         const xpEarned = getSpeciesXP(speciesTrim);
         const rarity = getSpeciesRarity(speciesTrim);
         triggerSuccess();
@@ -414,19 +385,6 @@ export default function LogCatchScreen() {
 
   const handleDismissSuccess = () => {
     if (pendingSpeciesBadge) return;
-    if (!user) {
-      AsyncStorage.setItem(ONBOARDING_NEEDS_PROFILE, '1').catch(() => {});
-      AsyncStorage.setItem(ONBOARDING_FIRST_CATCH_PENDING, '1').catch(() => {});
-      setSuccessOverlay(null);
-      setPendingSpeciesBadge(null);
-      setShareCaption('');
-      setShareMedia([]);
-      reset();
-      if (gamification.levelUpModal) gamification.releaseLevelUp(500);
-      else gamification.releaseLevelUp(0);
-      setTimeout(() => router.replace('/(tabs)/profile'), 350);
-      return;
-    }
     setSuccessOverlay(null);
     doFinalDismiss();
   };
@@ -495,18 +453,7 @@ export default function LogCatchScreen() {
           visible={true}
           onDismiss={() => {
             setPendingSpeciesBadge(null);
-            if (!user) {
-              AsyncStorage.setItem(ONBOARDING_NEEDS_PROFILE, '1').catch(() => {});
-              AsyncStorage.setItem(ONBOARDING_FIRST_CATCH_PENDING, '1').catch(() => {});
-              setShareCaption('');
-              setShareMedia([]);
-              reset();
-              if (gamification.levelUpModal) gamification.releaseLevelUp(500);
-              else gamification.releaseLevelUp(0);
-              setTimeout(() => router.replace('/(tabs)/profile'), 350);
-            } else {
-              doFinalDismiss();
-            }
+            doFinalDismiss();
           }}
           badgeName={pendingSpeciesBadge.badgeName}
           badgeKey={pendingSpeciesBadge.badgeKey}

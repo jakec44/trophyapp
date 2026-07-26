@@ -189,14 +189,15 @@ export default function SettingsScreen() {
     presentPaywall();
   };
 
-  const handleRestartOnboardingAsNewUser = async () => {
+  const handleResetAsNewUser = async () => {
     try {
       try {
         await signOut();
       } catch {
         // Proceed to clear storage even if sign-out fails (e.g. offline)
       }
-      const onboardingKeys = [
+      // Clear legacy onboarding keys + app storage so Superwall can own first-run UX.
+      const legacyOnboardingKeys = [
         'hasSeenOnboarding',
         'hasDismissedHomeOverlay',
         'onboarding_photo_hint_seen',
@@ -213,7 +214,7 @@ export default function SettingsScreen() {
         (k) =>
           k.startsWith('@Snagged') ||
           k.startsWith('Snagged:') ||
-          onboardingKeys.includes(k)
+          legacyOnboardingKeys.includes(k)
       );
       if (toRemove.length > 0) await AsyncStorage.multiRemove(toRemove);
       const { clearPendingActions, clearGuestId } = await import('@/src/lib/pendingActions');
@@ -221,7 +222,7 @@ export default function SettingsScreen() {
       await clearGuestId();
       router.replace('/(tabs)/leaderboard');
     } catch (e) {
-      console.error('Restart as new user error:', e);
+      console.error('Reset as new user error:', e);
       Alert.alert('Error', 'Could not reset. Please try again.');
     }
   };
@@ -433,9 +434,9 @@ export default function SettingsScreen() {
               <Feather name="refresh-cw" size={18} color={colors.lightSubtext} />
               <Text style={styles.settingTextWithFlex}>Force refresh profile</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingItem} onPress={handleRestartOnboardingAsNewUser}>
+            <TouchableOpacity style={styles.settingItem} onPress={handleResetAsNewUser}>
               <Feather name="rotate-ccw" size={18} color={colors.lightSubtext} />
-              <Text style={styles.settingTextWithFlex}>Restart onboarding as new user</Text>
+              <Text style={styles.settingTextWithFlex}>Reset app as new user</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.settingItem} onPress={handleMockChestOpen}>
               <Feather name="package" size={18} color={colors.lightSubtext} />

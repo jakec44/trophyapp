@@ -6,8 +6,8 @@ import { useAuthContext } from '@/src/context/AuthContext';
 
 /**
  * Redirects based on auth state:
- * - First-time walkthrough: no auto-redirect; unauthenticated users can use (tabs) until "Continue Fishing" after first catch.
- * - isSignedIn && in (auth) -> go to (tabs) (no separate onboarding screens).
+ * - Guests can use (tabs); Superwall will own paywall/onboarding.
+ * - isSignedIn && in (auth) -> go to Trophy Board.
  */
 export function AuthRedirect() {
   const { isSignedIn, isLoading } = useAuthContext();

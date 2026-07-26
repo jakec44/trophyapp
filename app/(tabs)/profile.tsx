@@ -52,13 +52,10 @@ import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { devLog, isDev } from '@/src/lib/env';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { consumePendingFlyReward } from '@/src/lib/flyRewardStore';
 import { PlacementsCard } from '@/src/components/rankings/PlacementsCard';
 import { SnaggedRankCard, RankStandingsLockedCard } from '@/src/components/rankings/SnaggedRankCard';
 import { isRankUnlocked } from '@/src/lib/snaggedRank';
-
-const ONBOARDING_FIRST_CATCH_PENDING = 'onboarding_first_catch_pending';
 
 const GOLD = colors.gold;
 const ACCENT_BLUE = colors.accentBlue;
@@ -249,22 +246,12 @@ export default function ProfileScreen() {
       fetchARRank();
       refreshMyPosts();
       if (user?.id && gamification.loaded) loadProfile();
-      if (!user?.id) {
-        AsyncStorage.getItem(ONBOARDING_FIRST_CATCH_PENDING).then((v) => {
-          const isFirstCatch = v === '1';
-          setSaveCatchPrompt(isFirstCatch);
-          if (isFirstCatch) setShowAuthGate(true);
-        });
-      } else {
-        setSaveCatchPrompt(false);
-      }
     }, [refreshMyStories, refreshViewedIds, refreshTournamentResults, fetchARRank, refreshMyPosts, loadProfile, user?.id, gamification.loaded])
   );
 
   const [showStoryViewer, setShowStoryViewer] = useState(false);
   const [storyViewerIndex, setStoryViewerIndex] = useState(0);
   const [showAuthGate, setShowAuthGate] = useState(false);
-  const [saveCatchPrompt, setSaveCatchPrompt] = useState(false);
 
   // Run on mount and whenever gamification finishes loading so level is always fresh
   useEffect(() => {
@@ -373,13 +360,9 @@ export default function ProfileScreen() {
       >
         {!user ? (
           <View style={styles.signedOutProfile}>
-            <Text style={styles.signedOutTitle}>
-              {saveCatchPrompt ? 'Sign in to save your catch' : 'Your profile'}
-            </Text>
+            <Text style={styles.signedOutTitle}>Your profile</Text>
             <Text style={styles.signedOutMessage}>
-              {saveCatchPrompt
-                ? 'Your catch is ready. Sign in to save it to your profile and start your logbook.'
-                : 'Sign in to view your stats, edit your profile, and share catches.'}
+              Sign in to view your stats, edit your profile, and share catches.
             </Text>
             <TouchableOpacity
               style={styles.signedOutButton}
@@ -675,7 +658,7 @@ export default function ProfileScreen() {
 
       <AuthGateModal
         visible={showAuthGate}
-        action={saveCatchPrompt ? 'onboarding_first_catch' : 'view_profile'}
+        action="view_profile"
         onClose={() => setShowAuthGate(false)}
       />
     </SafeAreaView>
