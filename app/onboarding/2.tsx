@@ -24,10 +24,10 @@ export default function OnboardingPage2() {
   const handleFinish = async () => {
     await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
     if (isPro) {
-      router.replace('/(tabs)/leaderboard');
+      router.replace('/(tabs)/index');
     } else {
       const usedNativePaywall = await presentPaywall();
-      if (usedNativePaywall) router.replace('/(tabs)/leaderboard');
+      if (usedNativePaywall) router.replace('/(tabs)/index');
     }
   };
 

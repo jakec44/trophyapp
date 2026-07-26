@@ -38,7 +38,7 @@ export function TournamentsAboutModal({ visible, onClose }: TournamentsAboutModa
                 {BULLET} Obviously fake entries can be removed and may result in a ban from tournaments.
               </Text>
               <Text style={styles.paragraph}>
-                {BULLET} Log fish to earn trophies and climb the Trophy Board. Species Rankings use your best catch by weight or length.
+                {BULLET} Your tournament placements earn you Trophies. Trophies are your competitive rank based only on tournament results—your true ranking for fishing skills.
               </Text>
               <Text style={styles.paragraph}>
                 {BULLET} Global shows everyone; Local filters by your region/state so you can compete with nearby anglers.

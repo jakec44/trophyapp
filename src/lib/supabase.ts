@@ -2129,6 +2129,48 @@ export interface SpeciesLeaderboardRow {
   metric_value: number;
   catch_id: string | null;
   metric_unit: 'lbs' | 'in';
+  /** Best-catch fish photo (resolved public URL). */
+  photo_url: string | null;
+}
+
+function resolveCatchPhotoUrl(
+  photoPath: string | null | undefined,
+  photoUrl: string | null | undefined
+): string | null {
+  if (photoPath) return getPublicUrl(MEDIA_BUCKET, photoPath);
+  if (!photoUrl) return null;
+  if (photoUrl.startsWith('http')) return photoUrl;
+  return getPublicUrl(MEDIA_BUCKET, photoUrl);
+}
+
+async function attachSpeciesLeaderboardPhotos(
+  rows: SpeciesLeaderboardRow[]
+): Promise<SpeciesLeaderboardRow[]> {
+  const catchIds = [...new Set(rows.map((r) => r.catch_id).filter(Boolean) as string[])];
+  if (catchIds.length === 0) return rows.map((r) => ({ ...r, photo_url: r.photo_url ?? null }));
+
+  try {
+    const { data, error } = await supabase
+      .from('catches')
+      .select('id, photo_url, photo_path')
+      .in('id', catchIds);
+    if (error) {
+      console.error('Query failed:', error);
+      return rows.map((r) => ({ ...r, photo_url: r.photo_url ?? null }));
+    }
+    const photoByCatch = new Map<string, string | null>();
+    for (const row of data ?? []) {
+      const c = row as { id: string; photo_url: string | null; photo_path: string | null };
+      photoByCatch.set(c.id, resolveCatchPhotoUrl(c.photo_path, c.photo_url));
+    }
+    return rows.map((r) => ({
+      ...r,
+      photo_url: (r.catch_id ? photoByCatch.get(r.catch_id) : null) ?? r.photo_url ?? null,
+    }));
+  } catch (e) {
+    console.error('Query failed:', e);
+    return rows.map((r) => ({ ...r, photo_url: r.photo_url ?? null }));
+  }
 }
 
 export async function getAnglerLeaderboard(
@@ -2318,7 +2360,7 @@ async function getSpeciesLeaderboardFallback(
   try {
     const { data: catches, error } = await supabase
       .from('catches')
-      .select('id, user_id, species, weight_lb, length_in')
+      .select('id, user_id, species, weight_lb, length_in, photo_url, photo_path')
       .is('deleted_at', null)
       .limit(5000);
 
@@ -2329,7 +2371,10 @@ async function getSpeciesLeaderboardFallback(
       friendIds = await getFriendIdSet(userId);
     }
 
-    const bestByUser = new Map<string, { metric_value: number; catch_id: string }>();
+    const bestByUser = new Map<
+      string,
+      { metric_value: number; catch_id: string; photo_url: string | null }
+    >();
 
     for (const row of catches) {
       const c = row as {
@@ -2338,6 +2383,8 @@ async function getSpeciesLeaderboardFallback(
         species: string | null;
         weight_lb: number | null;
         length_in: number | null;
+        photo_url: string | null;
+        photo_path: string | null;
       };
       if (!c.species || !match(c.species)) continue;
       if (friendIds && !friendIds.has(c.user_id)) continue;
@@ -2347,7 +2394,11 @@ async function getSpeciesLeaderboardFallback(
 
       const existing = bestByUser.get(c.user_id);
       if (!existing || metric > existing.metric_value) {
-        bestByUser.set(c.user_id, { metric_value: metric, catch_id: c.id });
+        bestByUser.set(c.user_id, {
+          metric_value: metric,
+          catch_id: c.id,
+          photo_url: resolveCatchPhotoUrl(c.photo_path, c.photo_url),
+        });
       }
     }
 
@@ -2381,6 +2432,7 @@ async function getSpeciesLeaderboardFallback(
         metric_value: best.metric_value,
         catch_id: best.catch_id,
         metric_unit: unit,
+        photo_url: best.photo_url,
       });
     }
 
@@ -2428,7 +2480,7 @@ export async function getSpeciesLeaderboard(
       catch_id: string | null;
       metric_unit: string;
     }[];
-    return rows.map((r) => ({
+    const mapped = rows.map((r) => ({
       rank: Number(r.rank),
       id: r.id,
       username: r.username ?? null,
@@ -2437,8 +2489,10 @@ export async function getSpeciesLeaderboard(
       state: r.state ?? null,
       metric_value: Number(r.metric_value ?? 0),
       catch_id: r.catch_id ?? null,
-      metric_unit: r.metric_unit === 'lbs' ? 'lbs' : 'in',
+      metric_unit: (r.metric_unit === 'lbs' ? 'lbs' : 'in') as 'lbs' | 'in',
+      photo_url: null as string | null,
     }));
+    return attachSpeciesLeaderboardPhotos(mapped);
   } catch (e) {
     console.error('[getSpeciesLeaderboard]', e);
     return getSpeciesLeaderboardFallback(species, scope, stateFilter, userId, limit);

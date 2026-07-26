@@ -149,11 +149,15 @@ export default function RankingsScreen() {
               const isYou = user?.id === r.id;
               const name = r.display_name?.trim() || r.username?.trim() || 'Angler';
               const avUrl = getAvatarUrlWithCacheBust(r.avatar_url, avatarCacheBust);
+              const fishUrl = r.photo_url?.trim() || null;
               return (
                 <TouchableOpacity
-                  key={r.id}
+                  key={`${r.id}-${r.catch_id ?? r.rank}`}
                   style={[styles.row, isYou && styles.rowYou]}
-                  onPress={() => router.push(`/user/${r.id}`)}
+                  onPress={() => {
+                    if (r.catch_id) router.push(`/catch/${r.catch_id}`);
+                    else router.push(`/user/${r.id}`);
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.rankBadge, { backgroundColor: rankStyle.bg }]}>
@@ -164,7 +168,7 @@ export default function RankingsScreen() {
                       <Image source={{ uri: avUrl }} style={styles.avatar} resizeMode="cover" />
                     ) : (
                       <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                        <Ionicons name="fish" size={18} color={colors.textFaint} />
+                        <Ionicons name="person" size={16} color={colors.textFaint} />
                       </View>
                     )}
                   </View>
@@ -175,6 +179,13 @@ export default function RankingsScreen() {
                     {r.state ? <Text style={styles.meta}>{r.state}</Text> : null}
                   </View>
                   <View style={styles.metricCol}>
+                    {fishUrl ? (
+                      <Image source={{ uri: fishUrl }} style={styles.fishThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.fishThumb, styles.fishThumbPlaceholder]}>
+                        <Ionicons name="fish" size={22} color={colors.textFaint} />
+                      </View>
+                    )}
                     <Text style={styles.metricValue}>
                       {Number(r.metric_value).toFixed(1)} {r.metric_unit}
                     </Text>
@@ -227,14 +238,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     lineHeight: 20,
   },
-  listWrap: { gap: 8 },
+  listWrap: { gap: 10 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.lightCard,
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 14,
     paddingHorizontal: 12,
+    minHeight: 88,
     borderWidth: 1,
     borderColor: colors.lightBorder,
     gap: 10,
@@ -275,10 +287,28 @@ const styles = StyleSheet.create({
     color: colors.textFaint,
     marginTop: 2,
   },
-  metricCol: { alignItems: 'flex-end' },
+  metricCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  fishThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  fishThumbPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.lightBorder,
+  },
   metricValue: {
     fontSize: 15,
     fontWeight: '800',
     color: GOLD,
+    minWidth: 58,
+    textAlign: 'right',
   },
 });

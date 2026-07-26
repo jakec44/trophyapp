@@ -356,23 +356,24 @@ export default function LeaderboardScreen() {
         showsVerticalScrollIndicator={true}
         removeClippedSubviews={false}
       >
-        {/* Header: back + LEADERBOARD + subtitle */}
-          <View style={styles.header}>
+        {/* Header: back to Home + trophies title */}
+        <View style={styles.header}>
           <TouchableOpacity
             style={styles.backBtn}
-            onPress={() => { if (router.canGoBack()) router.back(); else router.replace('/(tabs)/rankings'); }}
+            onPress={() => {
+              if (router.canGoBack()) router.back();
+              else router.replace('/(tabs)/index');
+            }}
             hitSlop={12}
-            style={{ opacity: 0 }}
-            disabled
+            accessibilityLabel="Back to Home"
           >
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>TROPHY BOARD</Text>
+            <Text style={styles.title}>TROPHIES</Text>
             <Text style={styles.subtitle}>
               {`${season?.name ?? 'Season 1'}${season && season.days_remaining >= 0 ? ` · ${season.days_remaining} days left` : ''}`}
             </Text>
-            <Text style={styles.devBadge}>DEV BUILD · ee8fe7d · NEW TABS</Text>
           </View>
           <View style={styles.headerRight} />
         </View>
@@ -643,18 +644,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: 2,
     letterSpacing: 0.5,
-  },
-  devBadge: {
-    marginTop: 8,
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#020b14',
-    backgroundColor: '#00e5c8',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    textAlign: 'center',
-    overflow: 'hidden',
   },
 
   toggleWrap: { marginBottom: 16 },

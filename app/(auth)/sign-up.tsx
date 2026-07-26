@@ -73,7 +73,7 @@ export default function SignUpScreen() {
         displayName: email.trim().split('@')[0],
       });
       if (result.session) {
-        router.replace('/(tabs)/leaderboard');
+        router.replace('/(tabs)/index');
       } else {
         showAlert('Account Created', 'Check your email to confirm your account, then sign in.');
         router.replace('/(auth)/sign-in');

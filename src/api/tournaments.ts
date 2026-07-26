@@ -23,9 +23,24 @@ import {
 } from '@/src/lib/tournamentDb';
 import { isValidUuid } from '@/src/lib/supabase';
 import { recordTournamentEntryForDailyQuest } from '@/src/lib/dailyQuests';
+import { PASSPORT_SPECIES } from '@/utils/gamificationData';
+
+const RARE_PLUS = new Set(['rare', 'epic', 'legendary', 'mythic']);
+
+function isRarePlusSpecies(species: string): boolean {
+  const lower = species.toLowerCase();
+  const match = PASSPORT_SPECIES.find(
+    (p) =>
+      lower.includes(p.name.toLowerCase()) ||
+      lower.includes(p.id.replace(/-/g, ' ')) ||
+      lower.includes(p.id)
+  );
+  return !!match && RARE_PLUS.has(match.rarity);
+}
 
 export const SPECIES_MATCH: Record<string, (s: string) => boolean> = {
   'biggest-fish-this-week': () => true,
+  'tournament-rarest': (s) => isRarePlusSpecies(s),
   'tournament-redfish': (s) => s.toLowerCase().includes('redfish'),
   'tournament-bass': (s) => s.toLowerCase().includes('bass'),
   'tournament-snook': (s) => s.toLowerCase().includes('snook'),
@@ -33,6 +48,8 @@ export const SPECIES_MATCH: Record<string, (s: string) => boolean> = {
   'tournament-striper': (s) =>
     s.toLowerCase().includes('striped') || s.toLowerCase().includes('striper'),
   'tournament-tarpon': (s) => s.toLowerCase().includes('tarpon'),
+  'tournament-bluegill': (s) => s.toLowerCase().includes('bluegill'),
+  'tournament-catfish': (s) => s.toLowerCase().includes('catfish'),
   'tournament-freshwater-trout': (s) =>
     s.toLowerCase().includes('trout') && !s.toLowerCase().includes('sea trout'),
   'tournament-smallest': (s) => {
