@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CustomTabBar } from '@/src/components/CustomTabBar';
 
-/** First visible tab — Home hub. */
+/** App Store 1.2.2 tabs: Home · Compete · Log · Logbook · Profile */
 export const unstable_settings = {
   initialRouteName: 'index',
 };
@@ -21,9 +21,9 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen name="index" options={{ title: 'Home' }} />
-        <Tabs.Screen name="tournaments" options={{ title: 'Tournaments', href: null }} />
+        <Tabs.Screen name="tournaments" options={{ title: 'Compete' }} />
         <Tabs.Screen name="leaderboard" options={{ title: 'Trophies', href: null }} />
-        <Tabs.Screen name="rankings" options={{ title: 'Rankings' }} />
+        <Tabs.Screen name="rankings" options={{ title: 'Rankings', href: null }} />
         <Tabs.Screen name="log" options={{ title: 'Log' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
         <Tabs.Screen name="friends" options={{ href: null }} />
