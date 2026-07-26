@@ -20,7 +20,7 @@ export function AuthRedirect() {
     const inAuthGroup = segments[0] === '(auth)';
 
     if (isSignedIn && inAuthGroup) {
-      router.replace('/(tabs)/leaderboard');
+      router.replace('/(tabs)/index');
     }
   }, [isSignedIn, isLoading, segments, router]);
 

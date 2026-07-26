@@ -6,7 +6,7 @@
  *            "Edit Fish Stats" (go to logbook) or "Post to Tournament" (enter).
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ import Feather from '@expo/vector-icons/Feather';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
 import type { UserFish, MetricType } from '@/src/types/tournaments';
-import { enterTournament } from '@/src/api/tournaments';
+import { enterTournament, SPECIES_MATCH } from '@/src/api/tournaments';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { usePresentPaywall } from '@/src/hooks/usePresentPaywall';
 import { mockUserProfile } from '@/utils/mockData';
@@ -305,6 +305,12 @@ export function TournamentEntryFlow({
     return () => { cancelled = true; };
   }, [visible, user?.id]);
 
+  const eligibleCatches = useMemo(() => {
+    const match = SPECIES_MATCH[tournamentId];
+    if (!match) return catches;
+    return catches.filter((f) => match(f.species ?? ''));
+  }, [catches, tournamentId]);
+
   const handleSelect = useCallback((fish: UserFish) => {
     setSelected(fish);
     setStep('confirm');
@@ -404,11 +410,17 @@ export function TournamentEntryFlow({
                   <ActivityIndicator size="large" color={TEAL} />
                   <Text style={styles.emptyBody}>Loading your catches…</Text>
                 </View>
-              ) : catches.length === 0 ? (
+              ) : eligibleCatches.length === 0 ? (
                 <View style={styles.emptyWrap}>
                   <Ionicons name="fish-outline" size={48} color={colors.lightBorder} />
-                  <Text style={styles.emptyTitle}>No catches yet</Text>
-                  <Text style={styles.emptyBody}>Log a catch first, then come back to enter.</Text>
+                  <Text style={styles.emptyTitle}>
+                    {catches.length === 0 ? 'No catches yet' : 'No eligible catches'}
+                  </Text>
+                  <Text style={styles.emptyBody}>
+                    {catches.length === 0
+                      ? 'Log a catch first, then come back to enter.'
+                      : 'None of your logged fish match this tournament. Log a matching species and try again.'}
+                  </Text>
                   <TouchableOpacity
                     style={styles.logBtn}
                     onPress={() => { handleClose(); router.push('/(tabs)/log'); }}
@@ -419,7 +431,7 @@ export function TournamentEntryFlow({
                 </View>
               ) : (
                 <FlatList
-                  data={catches}
+                  data={eligibleCatches}
                   keyExtractor={(f) => f.id}
                   renderItem={({ item }) => (
                     <FishCard fish={item} metricType={metricType} onSelect={handleSelect} />

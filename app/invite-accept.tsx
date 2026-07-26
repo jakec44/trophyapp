@@ -37,7 +37,7 @@ export default function InviteAcceptScreen() {
     setLoading(true);
     try {
       await redeemInviteCode(token, user.id);
-      router.replace('/(tabs)/leaderboard');
+      router.replace('/(tabs)/index');
     } catch (e) {
       Alert.alert('Could not accept', (e as Error).message ?? 'Please try again.');
     } finally {

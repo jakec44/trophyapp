@@ -4,15 +4,14 @@ import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
-import { useAuthContext } from '@/src/context/AuthContext';
 import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 
 const TAB_CONFIG = [
   {
-    name: 'Trophy Board',
-    route: '/(tabs)/leaderboard',
-    icon: 'trophy-outline' as const,
-    iconActive: 'trophy' as const,
+    name: 'Home',
+    route: '/(tabs)/index',
+    icon: 'home-outline' as const,
+    iconActive: 'home' as const,
   },
   {
     name: 'Rankings',
@@ -43,7 +42,15 @@ const TAB_CONFIG = [
 ] as const;
 
 function isRouteActive(pathname: string, route: string): boolean {
-  if (route.includes('leaderboard')) return pathname.includes('leaderboard');
+  if (route.includes('index')) {
+    return (
+      pathname === '/' ||
+      pathname === '/index' ||
+      pathname.endsWith('/(tabs)') ||
+      pathname.endsWith('/(tabs)/') ||
+      pathname.includes('/index')
+    );
+  }
   if (route.includes('rankings')) return pathname.includes('rankings');
   if (route.includes('logbook')) return pathname.includes('logbook');
   if (route.endsWith('/log') || route.includes('(tabs)/log')) {
@@ -62,15 +69,15 @@ function measureInWindow(ref: React.RefObject<View>): Promise<{ x: number; y: nu
 export function CustomTabBar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useAuthContext();
   const winContext = useTournamentWinCheckContext();
   const profileTabRef = useRef<View>(null);
-  const trophyTabRef = useRef<View>(null);
+  const homeTabRef = useRef<View>(null);
 
   useEffect(() => {
     if (!winContext) return;
     winContext.registerProfileIcon(() => measureInWindow(profileTabRef));
-    winContext.registerTrophyIcon(() => measureInWindow(trophyTabRef));
+    // Win fly-to still uses the "trophy" slot — Home is the primary hub now.
+    winContext.registerTrophyIcon(() => measureInWindow(homeTabRef));
   }, [winContext]);
 
   return (
@@ -79,13 +86,12 @@ export function CustomTabBar() {
         const isActive = isRouteActive(pathname, tab.route);
         const isCenter = 'isCenter' in tab && tab.isCenter;
         const isProfile = tab.name === 'Profile';
-        const isTrophy = tab.name === 'Trophy Board';
+        const isHome = tab.name === 'Home';
         const useEmoji = 'emoji' in tab && !!tab.emoji;
 
         const handlePress = () => {
           if (tab.route === '/(tabs)/log' && isCenter) {
-            if (!user?.id) router.replace('/(tabs)/profile');
-            else router.push('/camera');
+            router.push('/camera');
           } else {
             router.replace(tab.route as any);
           }
@@ -117,7 +123,7 @@ export function CustomTabBar() {
         return (
           <View
             key={tab.name}
-            ref={isProfile ? profileTabRef : isTrophy ? trophyTabRef : undefined}
+            ref={isProfile ? profileTabRef : isHome ? homeTabRef : undefined}
             style={styles.tab}
             collapsable={false}
           >

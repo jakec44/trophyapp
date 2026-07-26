@@ -1,38 +1,17 @@
-import { useEffect, useState } from 'react';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CustomTabBar } from '@/src/components/CustomTabBar';
-import { useAuthContext } from '@/src/context/AuthContext';
-import { OnboardingOverlayContext } from '@/src/context/OnboardingOverlayContext';
 
-const ONBOARDING_NEEDS_PROFILE = 'onboarding_needs_profile';
-const ONBOARDING_FIRST_CATCH_PENDING = 'onboarding_first_catch_pending';
-
-/** First visible tab — avoid /(tabs) resolving to hidden Home (index). */
+/** First visible tab — Home hub. */
 export const unstable_settings = {
-  initialRouteName: 'leaderboard',
+  initialRouteName: 'index',
 };
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { user } = useAuthContext();
-  const [hideTabBar, setHideTabBar] = useState(false);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    AsyncStorage.getItem(ONBOARDING_NEEDS_PROFILE).then((v) => {
-      if (v === '1') {
-        AsyncStorage.multiRemove([ONBOARDING_FIRST_CATCH_PENDING]).catch(() => {});
-        router.replace('/(tabs)/profile');
-      }
-    });
-  }, [user?.id, router]);
 
   return (
-    <OnboardingOverlayContext.Provider value={{ hideTabBar, setHideTabBar }}>
     <View style={styles.container}>
       <Tabs
         screenOptions={{
@@ -41,9 +20,9 @@ export default function TabsLayout() {
           tabBarStyle: { display: 'none' }, // Hide default, we use CustomTabBar
         }}
       >
-        <Tabs.Screen name="index" options={{ title: 'Home', href: null }} />
-        <Tabs.Screen name="tournaments" options={{ title: 'Compete', href: null }} />
-        <Tabs.Screen name="leaderboard" options={{ title: 'Trophy Board' }} />
+        <Tabs.Screen name="index" options={{ title: 'Home' }} />
+        <Tabs.Screen name="tournaments" options={{ title: 'Tournaments', href: null }} />
+        <Tabs.Screen name="leaderboard" options={{ title: 'Trophies', href: null }} />
         <Tabs.Screen name="rankings" options={{ title: 'Rankings' }} />
         <Tabs.Screen name="log" options={{ title: 'Log' }} />
         <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
@@ -82,13 +61,11 @@ export default function TabsLayout() {
         style={[
           styles.tabBarWrapper,
           { paddingBottom: insets.bottom || 12 },
-          hideTabBar && { opacity: 0, pointerEvents: 'none' as const },
         ]}
       >
         <CustomTabBar />
       </View>
     </View>
-    </OnboardingOverlayContext.Provider>
   );
 }
 

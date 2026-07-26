@@ -11,6 +11,9 @@ export type TournamentType =
   | 'BIGGEST_STRIPER'
   | 'BIGGEST_TARPON'
   | 'BIGGEST_TROUT'
+  | 'BIGGEST_BLUEGILL'
+  | 'BIGGEST_CATFISH'
+  | 'RAREST_FISH'
   | 'SMALLEST_FISH';
 
 export type MetricType = 'WEIGHT_LBS' | 'LENGTH_IN' | 'VOTES_UP';
