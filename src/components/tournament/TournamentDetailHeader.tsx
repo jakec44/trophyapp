@@ -42,8 +42,8 @@ export function TournamentDetailHeader({
   const isEnded = tournament.endsAt && new Date(tournament.endsAt).getTime() < Date.now();
   const title =
     tournament.id === 'biggest-fish-this-week'
-      ? 'Biggest Fish Overall'
-      : `Biggest Fish Overall • ${tournament.title}`;
+      ? 'Weekly Biggest'
+      : tournament.title;
   const metric = getMetricLabel(tournament.metricType);
 
   const handleScopeChange = (v: 'global' | 'local') => {

@@ -33,7 +33,7 @@ export function MoreCompetitionsSection({
 
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Biggest Fish Overall</Text>
+      <Text style={styles.sectionTitle}>Tournaments</Text>
       {competitions.map((comp) => (
         <CompetitionPreviewCard
           key={comp.id}
@@ -61,10 +61,8 @@ function CompetitionPreviewCard({
   onPress,
 }: CompetitionPreviewCardProps) {
   const winCheck = useTournamentWinCheckContext();
-  const isGeneral = tournament.id === 'biggest-fish-this-week';
-  const displayTitle = isGeneral
-    ? 'Biggest Fish Overall'
-    : `Biggest Fish Overall · ${tournament.title}`;
+  const displayTitle =
+    tournament.id === 'biggest-fish-this-week' ? 'Weekly Biggest' : tournament.title;
   const top3 = tournament.topEntries.slice(0, 3);
 
   return (
