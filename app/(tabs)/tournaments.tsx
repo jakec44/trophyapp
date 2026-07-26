@@ -54,8 +54,7 @@ const ACCENT_BLUE = TEAL;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const FILTER_IDS: { id: string; label: string }[] = [
-  { id: 'biggest-fish-this-week', label: 'Weekly Biggest' },
-  { id: 'tournament-smallest', label: 'Weekly Rarest' },
+  { id: 'biggest-fish-this-week', label: 'Biggest Fish Overall' },
   { id: 'tournament-redfish', label: 'Redfish' },
   { id: 'tournament-bass', label: 'Bass' },
   { id: 'tournament-snook', label: 'Snook' },
@@ -63,9 +62,20 @@ const FILTER_IDS: { id: string; label: string }[] = [
   { id: 'tournament-striper', label: 'Striper' },
   { id: 'tournament-tarpon', label: 'Tarpon' },
   { id: 'tournament-freshwater-trout', label: 'Freshwater Trout' },
+  { id: 'tournament-smallest', label: 'Smallest Fish' },
 ];
 
-const FEATURED_IDS = FILTER_IDS.map((f) => f.id);
+const FEATURED_IDS = [
+  'biggest-fish-this-week',
+  'tournament-redfish',
+  'tournament-bass',
+  'tournament-snook',
+  'tournament-flounder',
+  'tournament-striper',
+  'tournament-tarpon',
+  'tournament-freshwater-trout',
+  'tournament-smallest',
+];
 
 const SELECTED_TOURNAMENT_KEY = '@Snagged/selectedTournamentId';
 
@@ -385,11 +395,7 @@ export default function TournamentsScreen() {
             </TouchableOpacity>
           </View>
           <Text style={styles.title} numberOfLines={1}>
-            {featuredTournament?.id === 'biggest-fish-this-week'
-              ? 'WEEKLY BIGGEST'
-              : featuredTournament?.id === 'tournament-smallest'
-                ? 'WEEKLY RAREST'
-                : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
+            {featuredTournament?.id === 'biggest-fish-this-week' ? 'BIGGEST FISH OVERALL' : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
           </Text>
         </View>
 
