@@ -26,7 +26,6 @@ import { colors } from '@/utils/colors';
 import { CARD_RADIUS } from '@/src/constants/styles';
 import { useHomeTournaments } from '@/src/hooks/useHomeTournaments';
 import { useLocationState } from '@/src/hooks/useLocationState';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   fetchTournamentEntries,
   isUserEnteredInTournament,
@@ -88,7 +87,8 @@ export default function CompeteScreen() {
   const insets = useSafeAreaInsets();
   const topPadding = Math.max(4, insets.top - 4);
   const [scope, setScope] = useState<'global' | 'local'>('global');
-  const bottomPadding = useBottomSafePadding();
+  // Stack screen (no tab bar) — only need home-indicator padding.
+  const bottomPadding = Math.max(24, insets.bottom + 16);
   const { state: locationState, fetchStateFromLocation } = useLocationState();
   const [featuredCompetitionId, setFeaturedCompetitionIdState] = useState(
     deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : FEATURED_IDS[0]
