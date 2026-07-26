@@ -3,9 +3,9 @@ import { View, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CustomTabBar } from '@/src/components/CustomTabBar';
 
-/** App Store 1.2.2 tabs: Home · Compete · Log · Logbook · Profile */
+/** App Store tabs: Compete · Home · Log · Logbook · Profile */
 export const unstable_settings = {
-  initialRouteName: 'index',
+  initialRouteName: 'tournaments',
 };
 
 export default function TabsLayout() {

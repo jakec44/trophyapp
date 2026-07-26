@@ -1,4 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+/**
+ * Compete — App Store published layout (clean, centered).
+ * Header · Custom tournaments · chips · Log a catch · stats · podium · rest list
+ */
+
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,24 +11,21 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
-  Animated,
-  Dimensions,
-  Platform,
+  Image,
   Alert,
   RefreshControl,
+  Share,
+  Platform,
 } from 'react-native';
 import { ParticleBackground } from '@/src/components/ui/ParticleBackground';
 import { SnaggedWordmark } from '@/src/components/ui/SnaggedWordmark';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Feather from '@expo/vector-icons/Feather';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
-import { CARD_RADIUS } from '@/src/constants/styles';
 import { useHomeTournaments } from '@/src/hooks/useHomeTournaments';
 import { useLocationState } from '@/src/hooks/useLocationState';
 import { useBottomSafePadding } from '@/src/components/ScreenContainer';
@@ -36,59 +38,111 @@ import {
 } from '@/src/api/tournaments';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { usePresentPaywall } from '@/src/hooks/usePresentPaywall';
-import type { Tournament, FishEntry } from '@/src/types/tournaments';
-import { getEntryMetricValue, formatMetric } from '@/src/types/tournaments';
+import { useGamificationContext } from '@/src/context/GamificationContext';
+import type { FishEntry, MetricType } from '@/src/types/tournaments';
+import { getEntryMetricValue, formatMetric, getMetricUnitShort } from '@/src/types/tournaments';
 import { LeaderboardRow } from '@/src/components/home/LeaderboardRow';
-import { GlobalLocalToggle } from '@/src/components/competitions/GlobalLocalToggle';
-import { TournamentsAboutModal } from '@/src/components/competitions/TournamentsAboutModal';
-import { TournamentCountdown } from '@/src/components/gamification/TournamentCountdown';
 import { TournamentEntryFlow } from '@/src/components/competitions/TournamentEntryFlow';
 import { isDev } from '@/src/lib/env';
 import { forceRestartTournament, getProfileDisplayItemsBatch } from '@/src/lib/supabase';
 import { deleteTournamentEntryByEntryId } from '@/src/lib/tournamentDb';
 import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
 import { ENABLE_MOCK_USERS, getMockTournamentEntries } from '@/utils/mockLeaderboardData';
+import { getSnaggedRankTier, getTierColor } from '@/src/lib/snaggedRank';
+import { useTournamentTimer, type TournamentTimerState } from '@/src/hooks/useTournamentTimer';
+import { isValidImageUri } from '@/src/lib/imageUri';
 
 const TEAL = colors.teal;
-const ACCENT_BLUE = TEAL;
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const FILTER_IDS: { id: string; label: string }[] = [
-  { id: 'biggest-fish-this-week', label: 'Biggest Fish Overall' },
-  { id: 'tournament-redfish', label: 'Redfish' },
+  { id: 'biggest-fish-this-week', label: 'Weekly Biggest' },
+  { id: 'tournament-rarest', label: 'Weekly Rarest' },
   { id: 'tournament-bass', label: 'Bass' },
+  { id: 'tournament-redfish', label: 'Redfish' },
   { id: 'tournament-snook', label: 'Snook' },
   { id: 'tournament-flounder', label: 'Flounder' },
   { id: 'tournament-striper', label: 'Striper' },
   { id: 'tournament-tarpon', label: 'Tarpon' },
-  { id: 'tournament-freshwater-trout', label: 'Freshwater Trout' },
-  { id: 'tournament-smallest', label: 'Smallest Fish' },
+  { id: 'tournament-bluegill', label: 'Bluegill' },
+  { id: 'tournament-catfish', label: 'Catfish' },
+  { id: 'tournament-freshwater-trout', label: 'Trout' },
+  { id: 'tournament-smallest', label: 'Smallest' },
 ];
 
-const FEATURED_IDS = [
-  'biggest-fish-this-week',
-  'tournament-redfish',
-  'tournament-bass',
-  'tournament-snook',
-  'tournament-flounder',
-  'tournament-striper',
-  'tournament-tarpon',
-  'tournament-freshwater-trout',
-  'tournament-smallest',
-];
+const FEATURED_IDS = FILTER_IDS.map((f) => f.id);
+
+const PODIUM_REWARDS: Record<1 | 2 | 3, string> = {
+  1: '+200',
+  2: '+120',
+  3: '+60',
+};
 
 const SELECTED_TOURNAMENT_KEY = '@Snagged/selectedTournamentId';
+
+function formatRankBadge(label: string): string {
+  return label.replace(/\bIII\b/, '3').replace(/\bII\b/, '2').replace(/\bI\b/, '1');
+}
+
+/** Store-style countdown: "18h 25m" or "2d 4h" */
+function formatStoreCountdown(state: TournamentTimerState): string {
+  if (state.ended) return 'Ended';
+  if (state.days > 0) {
+    return state.hours > 0 ? `${state.days}d ${state.hours}h` : `${state.days}d`;
+  }
+  return `${state.hours}h ${String(state.mins).padStart(2, '0')}m`;
+}
+
+function RestListRow({
+  entry,
+  rank,
+  metricType,
+  isYou,
+  onPress,
+}: {
+  entry: FishEntry;
+  rank: number;
+  metricType: MetricType;
+  isYou: boolean;
+  onPress: () => void;
+}) {
+  const name = (entry.displayName ?? entry.username).trim() || entry.username;
+  const value = getEntryMetricValue(entry, metricType);
+  const display = formatMetric(value, metricType);
+  const unit = getMetricUnitShort(metricType);
+  const hasAvatar = isValidImageUri(entry.avatarUrl);
+
+  return (
+    <TouchableOpacity style={styles.restRow} onPress={onPress} activeOpacity={0.75}>
+      <Text style={styles.restRank}>#{rank}</Text>
+      {hasAvatar ? (
+        <Image source={{ uri: entry.avatarUrl }} style={styles.restAvatar} />
+      ) : (
+        <View style={[styles.restAvatar, styles.restAvatarPh]}>
+          <Text style={styles.restAvatarInit}>{name.slice(0, 1).toUpperCase()}</Text>
+        </View>
+      )}
+      <View style={styles.restNameCol}>
+        <Text style={styles.restName} numberOfLines={1}>
+          {name}
+          {isYou ? '  · YOU' : ''}
+        </Text>
+      </View>
+      <Text style={styles.restMetric} numberOfLines={1}>
+        {display} {unit}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function TournamentsScreen() {
   const router = useRouter();
   const { user } = useAuthContext();
+  const gamification = useGamificationContext();
   const { presentPaywall } = usePresentPaywall();
   const { tournamentId: deepLinkId } = useLocalSearchParams<{ tournamentId?: string }>();
-  const insets = useSafeAreaInsets();
-  const topPadding = Math.max(4, insets.top - 4);
-  const [scope, setScope] = useState<'global' | 'local'>('global');
   const bottomPadding = useBottomSafePadding();
-  const { state: locationState, fetchStateFromLocation } = useLocationState();
+  const [scope] = useState<'global' | 'local'>('global');
+  const { state: locationState } = useLocationState();
   const [featuredCompetitionId, setFeaturedCompetitionIdState] = useState(
     deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : FEATURED_IDS[0]
   );
@@ -98,73 +152,69 @@ export default function TournamentsScreen() {
     setFeaturedCompetitionIdState(id);
     AsyncStorage.setItem(SELECTED_TOURNAMENT_KEY, id).catch(() => {});
   }, []);
+
   const [entries, setEntries] = useState<FishEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [arrowVisible, setArrowVisible] = useState(true);
-  const [restartingCycle, setRestartingCycle] = useState(false);
-  const [showAboutModal, setShowAboutModal] = useState(false);
   const [pullRefreshing, setPullRefreshing] = useState(false);
-  const arrowOpacity = useRef(new Animated.Value(1)).current;
-
-  const handleFilterScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize } = e.nativeEvent;
-    const scrollX = contentOffset.x;
-    const maxScroll = contentSize.width - SCREEN_WIDTH + 32;
-    if (maxScroll > 0 && scrollX > 20) {
-      setArrowVisible(false);
-      Animated.timing(arrowOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    }
-  };
+  const [restartingCycle, setRestartingCycle] = useState(false);
+  const [showEntryFlow, setShowEntryFlow] = useState(false);
+  const [isEntered, setIsEntered] = useState(false);
+  const [voteLoadingEntryId, setVoteLoadingEntryId] = useState<string | null>(null);
 
   const stateForLocal = scope === 'local' ? (locationState ?? user?.state ?? undefined) : undefined;
-  const { tournaments, userFish, voteLoading, handleVote, handleRefresh, loading: tournamentsLoading } = useHomeTournaments(scope, user?.id, stateForLocal);
+  const { tournaments, handleRefresh, loading: tournamentsLoading } = useHomeTournaments(
+    scope,
+    user?.id,
+    stateForLocal
+  );
   const winCheck = useTournamentWinCheckContext();
 
-  // Restore last selected tournament on mount (so reload doesn't always show first)
   useEffect(() => {
     if (hasRestoredSelection.current) return;
     if (deepLinkId && FEATURED_IDS.includes(deepLinkId)) return;
     hasRestoredSelection.current = true;
-    AsyncStorage.getItem(SELECTED_TOURNAMENT_KEY).then((saved) => {
-      if (saved && FEATURED_IDS.includes(saved)) {
-        setFeaturedCompetitionIdState(saved);
-      }
-    }).catch(() => {});
+    AsyncStorage.getItem(SELECTED_TOURNAMENT_KEY)
+      .then((saved) => {
+        if (saved && FEATURED_IDS.includes(saved)) setFeaturedCompetitionIdState(saved);
+      })
+      .catch(() => {});
   }, [deepLinkId]);
 
-  // When tournaments load, if current selection isn't in the list, pick first available
   useEffect(() => {
     if (tournaments.length === 0) return;
     const ids = new Set(tournaments.map((t) => t.id));
     if (ids.has(featuredCompetitionId)) return;
-    const first = tournaments[0]?.id ?? FEATURED_IDS[0];
+    const first = tournaments.find((t) => FEATURED_IDS.includes(t.id))?.id ?? FEATURED_IDS[0];
     setFeaturedCompetitionIdState(first);
   }, [tournaments, featuredCompetitionId]);
 
-  // Sync when navigated here from the banner with a specific tournament
   useEffect(() => {
-    if (deepLinkId && FEATURED_IDS.includes(deepLinkId)) {
-      setFeaturedCompetitionId(deepLinkId);
-    }
-  }, [deepLinkId]);
+    if (deepLinkId && FEATURED_IDS.includes(deepLinkId)) setFeaturedCompetitionId(deepLinkId);
+  }, [deepLinkId, setFeaturedCompetitionId]);
 
   const featuredTournament = tournaments.find((t) => t.id === featuredCompetitionId);
   const currentUserId = user?.id ?? null;
+  const metricType: MetricType = featuredTournament?.metricType ?? 'WEIGHT_LBS';
+  const timer = useTournamentTimer(featuredTournament?.endsAt);
+  const timeRemaining = featuredTournament?.endsAt
+    ? formatStoreCountdown(timer)
+    : tournamentsLoading
+      ? '…'
+      : '—';
+
+  const rankTier = useMemo(() => getSnaggedRankTier(gamification?.xp ?? 0), [gamification?.xp]);
+  const rankBadgeLabel = formatRankBadge(rankTier.label);
+  const rankBadgeColor = getTierColor(rankTier.tierName);
 
   const loadEntries = useCallback(async () => {
     setLoading(true);
     try {
-      const userStateForLocal = scope === 'local' ? (locationState ?? user?.state ?? undefined) : undefined;
       const { entries: list } = await fetchTournamentEntries(
         featuredCompetitionId,
         0,
         200,
         scope,
-        userStateForLocal,
+        stateForLocal,
         currentUserId
       );
       const authorIds = [...new Set(list.map((e) => e.userId))];
@@ -174,17 +224,46 @@ export default function TournamentsScreen() {
         displayItems: displayMap[e.userId] ?? [],
       }));
       if (isDev && ENABLE_MOCK_USERS && featuredCompetitionId) {
-        const metricType = featuredTournament?.metricType === 'LENGTH_IN' ? 'LENGTH_IN' : 'WEIGHT_LBS';
-        const mockEntries = getMockTournamentEntries(featuredCompetitionId, metricType);
-        enriched = [...enriched, ...mockEntries];
+        const mockMetric = metricType === 'LENGTH_IN' ? 'LENGTH_IN' : 'WEIGHT_LBS';
+        enriched = [...enriched, ...getMockTournamentEntries(featuredCompetitionId, mockMetric)];
       }
       setEntries(enriched);
+    } catch (e) {
+      console.error('Query failed:', e);
+      setEntries([]);
     } finally {
       setLoading(false);
     }
-  }, [featuredCompetitionId, scope, locationState, user?.state, currentUserId]);
+  }, [featuredCompetitionId, scope, stateForLocal, currentUserId, metricType]);
 
-  const [voteLoadingEntryId, setVoteLoadingEntryId] = useState<string | null>(null);
+  useEffect(() => {
+    loadEntries();
+  }, [loadEntries]);
+
+  useFocusEffect(
+    useCallback(() => {
+      winCheck?.triggerCheck();
+      if (tournaments.length === 0) handleRefresh();
+    }, [winCheck, tournaments.length, handleRefresh])
+  );
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setIsEntered(false);
+      return;
+    }
+    isUserEnteredInTournament(featuredCompetitionId, currentUserId).then(setIsEntered);
+  }, [featuredCompetitionId, currentUserId]);
+
+  const onPullRefresh = useCallback(async () => {
+    setPullRefreshing(true);
+    try {
+      await Promise.all([handleRefresh(), loadEntries()]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }, [handleRefresh, loadEntries]);
+
   const handleVoteGated = useCallback(
     async (entryId: string, vote: 'UP' | 'DOWN' | null) => {
       if (!currentUserId) {
@@ -210,9 +289,8 @@ export default function TournamentsScreen() {
       );
       try {
         const result = await voteOnEntry(entryId, vote, currentUserId);
-        if (result.removed) {
-          setEntries((p) => p.filter((e) => e.id !== entryId));
-        } else {
+        if (result.removed) setEntries((p) => p.filter((e) => e.id !== entryId));
+        else {
           setEntries((p) =>
             p.map((e) =>
               e.id === entryId
@@ -231,70 +309,15 @@ export default function TournamentsScreen() {
     [entries, currentUserId, router]
   );
 
-  // Load entries only when user switches tournament, scope, or location (no refetch on tournaments list updates)
-  useEffect(() => {
-    loadEntries();
-  }, [loadEntries]);
-
-  const onPullRefresh = useCallback(async () => {
-    setPullRefreshing(true);
-    try {
-      await Promise.all([handleRefresh(), loadEntries()]);
-    } finally {
-      setPullRefreshing(false);
-    }
-  }, [handleRefresh, loadEntries]);
-
-  // When user focuses Tournaments tab, run win check and ensure tournaments are loaded (fixes first-click times not showing)
-  useFocusEffect(
-    useCallback(() => {
-      winCheck?.triggerCheck();
-      if (tournaments.length === 0) handleRefresh();
-    }, [winCheck, tournaments.length, handleRefresh])
-  );
-
-  const handleScopeChange = async (v: 'global' | 'local') => {
-    if (v === 'local' && !locationState) {
-      await fetchStateFromLocation();
-    }
-    setScope(v);
-  };
-
-  const getMetricLabel = (metricType: string) => {
-    if (metricType === 'WEIGHT_LBS') return 'lbs';
-    if (metricType === 'LENGTH_IN') return 'in';
-    if (metricType === 'VOTES_UP') return 'votes';
-    return 'score';
-  };
-
-  const currentUsername = (user as { username?: string } | null)?.username ?? 'You';
-  const currentAvatarUrl = (user as { avatarUrl?: string } | null)?.avatarUrl;
-
-  // Track entry status as state so button updates immediately after entering
-  const [isEntered, setIsEntered] = useState(false);
-
-  // Sync isEntered when tournament or user changes (not on every entries update)
-  useEffect(() => {
-    if (!currentUserId) {
-      setIsEntered(false);
-      return;
-    }
-    isUserEnteredInTournament(featuredCompetitionId, currentUserId).then(setIsEntered);
-  }, [featuredCompetitionId, currentUserId]);
-
-  // Entry flow modal
-  const [showEntryFlow, setShowEntryFlow] = useState(false);
-
-  const handleEnterTournament = useCallback(async () => {
+  const handleLogACatch = useCallback(async () => {
     if (!currentUserId) {
       router.replace('/(tabs)/profile');
       return;
     }
     if (isEntered) {
-      Alert.alert('Already entered', 'You already have a catch in this tournament.');
+      Alert.alert('Already entered', 'You already have a catch in this tournament. Delete it to enter a different one.');
       return;
     }
-    // Free users can only enter one tournament at a time
     const plan = user?.subscriptionPlan ?? 'free';
     if (plan === 'free') {
       const count = await countUserTournamentEntries(currentUserId);
@@ -311,7 +334,7 @@ export default function TournamentsScreen() {
       }
     }
     setShowEntryFlow(true);
-  }, [currentUserId, isEntered, user?.subscriptionPlan, presentPaywall]);
+  }, [currentUserId, isEntered, user?.subscriptionPlan, presentPaywall, router]);
 
   const handleEntryFlowDone = useCallback(async () => {
     setShowEntryFlow(false);
@@ -319,27 +342,37 @@ export default function TournamentsScreen() {
     await loadEntries();
   }, [loadEntries]);
 
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const handleDeleteEntry = useCallback(() => {
+  const handleShare = useCallback(async () => {
+    const title = featuredTournament?.title ?? 'Snagged tournament';
+    try {
+      await Share.share({
+        message: `Compete in ${title} on Snagged — log your catch and climb the leaderboard!`,
+        title: 'Share tournament',
+      });
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      if (e?.message === 'User did not share' || e?.message?.toLowerCase?.().includes('cancel')) return;
+      Alert.alert('Share failed', 'Could not share tournament.');
+    }
+  }, [featuredTournament?.title]);
+
+  const handleDeleteOwnEntry = useCallback(() => {
     if (!currentUserId) return;
     Alert.alert(
       'Delete entry?',
-      "This will remove your entry from this tournament. Your catch will remain in your logbook.",
+      'This will remove your entry from this tournament. Your catch will remain in your logbook.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete entry',
           style: 'destructive',
           onPress: async () => {
-            setDeleteLoading(true);
             try {
               await withdrawFromTournament(featuredCompetitionId, currentUserId);
               setIsEntered(false);
               await loadEntries();
             } catch (e) {
               Alert.alert('Error', (e as Error).message);
-            } finally {
-              setDeleteLoading(false);
             }
           },
         },
@@ -349,6 +382,11 @@ export default function TournamentsScreen() {
 
   const handleRemoveEntry = useCallback(
     async (entryId: string) => {
+      const entry = entries.find((e) => e.id === entryId);
+      if (entry && currentUserId && entry.userId === currentUserId) {
+        handleDeleteOwnEntry();
+        return;
+      }
       if (entryId.startsWith('mock-entry-')) {
         setEntries((prev) => prev.filter((e) => e.id !== entryId));
         return;
@@ -357,324 +395,229 @@ export default function TournamentsScreen() {
         await deleteTournamentEntryByEntryId(entryId);
         await loadEntries();
       } catch (e) {
-        console.error('[Tournaments] remove entry failed:', e);
+        console.error('[Compete] remove entry failed:', e);
       }
     },
-    [loadEntries]
+    [entries, currentUserId, handleDeleteOwnEntry, loadEntries]
   );
 
   const showRemoveEntry = isDev || user?.isModerator === true;
-
   const top3 = entries.slice(0, 3);
   const restEntries = entries.slice(3);
-  const leadValue = top3[0] ? getEntryMetricValue(top3[0], featuredTournament?.metricType ?? 'WEIGHT_LBS') : undefined;
-  const leadDisplay = leadValue != null ? formatMetric(leadValue, featuredTournament?.metricType ?? 'WEIGHT_LBS') : '—';
+  const leadValue = top3[0] ? getEntryMetricValue(top3[0], metricType) : undefined;
+  const leadDisplay = leadValue != null ? formatMetric(leadValue, metricType) : '—';
+  const entrantsCount = featuredTournament?.entrantsCount ?? entries.length;
+
+  const renderPodium = (rank: 1 | 2 | 3, entry: FishEntry | undefined, slotStyle: object) => {
+    const isYou = !!(entry && currentUserId && entry.userId === currentUserId);
+    const canTrash = !!(entry && (isYou || showRemoveEntry));
+    return (
+      <View key={`podium-${rank}`} style={[styles.podiumSlot, slotStyle]}>
+        <View style={styles.rewardPill}>
+          <Ionicons name="trophy" size={11} color={colors.gold} />
+          <Text style={styles.rewardText}>{PODIUM_REWARDS[rank]}</Text>
+        </View>
+        {entry ? (
+          <LeaderboardRow
+            entry={entry}
+            rank={rank}
+            metricType={metricType}
+            onVote={handleVoteGated}
+            voteLoading={voteLoadingEntryId}
+            variant="hero"
+            isYou={isYou}
+            onRemoveEntry={canTrash ? handleRemoveEntry : undefined}
+          />
+        ) : (
+          <View style={[styles.podiumEmpty, rank === 1 ? styles.podiumEmptyFirst : styles.podiumEmptySide]}>
+            <Text style={styles.podiumEmptyText}>Open</Text>
+            <Text style={styles.podiumEmptyRank}>{rank === 1 ? '1st' : rank === 2 ? '2nd' : '3rd'}</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Animated rising particle background — behind all content */}
       <ParticleBackground />
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingTop: topPadding, paddingBottom: bottomPadding }]}
+        style={styles.scroll}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomPadding + 16 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={pullRefreshing}
-            onRefresh={onPullRefresh}
-            tintColor={TEAL}
-          />
+          <RefreshControl refreshing={pullRefreshing} onRefresh={onPullRefresh} tintColor={TEAL} />
         }
       >
-        {/* Header — Snagged on top, tournament title + About */}
+        {/* Header — Snagged | BRONZE badge */}
         <View style={styles.header}>
-          <View style={styles.headerTopRow}>
-            <SnaggedWordmark />
-            <TouchableOpacity style={styles.aboutBtn} onPress={() => setShowAboutModal(true)}>
-              <Text style={styles.aboutBtnText}>About</Text>
-            </TouchableOpacity>
+          <SnaggedWordmark />
+          <View style={[styles.rankBadge, { borderColor: `${rankBadgeColor}99` }]}>
+            <Ionicons name="shield" size={14} color={rankBadgeColor} />
+            <Text style={[styles.rankBadgeText, { color: rankBadgeColor }]}>{rankBadgeLabel}</Text>
           </View>
-          <Text style={styles.title} numberOfLines={1}>
-            {featuredTournament?.id === 'biggest-fish-this-week' ? 'BIGGEST FISH OVERALL' : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
-          </Text>
         </View>
 
-        {/* Global / Local */}
-        <View style={styles.toggleWrap}>
-          <View style={styles.toggleRow}>
-            <GlobalLocalToggle value={scope} onChange={handleScopeChange} dark />
-          </View>
-          <View style={styles.viewLeaderboardWrap}>
-            <TouchableOpacity
-              style={styles.viewLeaderboardBtn}
-              onPress={() => router.push('/(tabs)/leaderboard')}
-              activeOpacity={0.85}
-            >
-              <LinearGradient
-                colors={['#FFD700', '#FFA500', '#FF8C00']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.viewLeaderboardGradient}
-              >
-                <Text style={styles.viewLeaderboardText}>🏆 View Leaderboard</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.syncHint}>Entries sync to both</Text>
-        </View>
+        {/* Custom tournaments */}
+        <TouchableOpacity
+          style={styles.customBtn}
+          activeOpacity={0.85}
+          onPress={() =>
+            Alert.alert('Custom tournaments', 'Create and join private tournaments with friends — coming soon.')
+          }
+        >
+          <Ionicons name="people-outline" size={18} color={TEAL} />
+          <Text style={styles.customBtnText}>Custom tournaments</Text>
+          <Ionicons name="chevron-forward" size={16} color={TEAL} />
+        </TouchableOpacity>
 
-        <TournamentsAboutModal visible={showAboutModal} onClose={() => setShowAboutModal(false)} />
-
-        {/* Secondary filters — species + sort */}
-        <View style={styles.filtersWrap}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-            onScroll={handleFilterScroll}
-            scrollEventThrottle={16}
-          >
-            {FILTER_IDS.map((f) => (
+        {/* Chips — centered scroll feel */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+          style={styles.chipScroll}
+        >
+          {FILTER_IDS.map((f) => {
+            const active = featuredCompetitionId === f.id;
+            return (
               <TouchableOpacity
                 key={f.id}
-                style={[
-                  styles.chip,
-                  featuredCompetitionId === f.id && styles.chipActive,
-                ]}
+                style={[styles.chip, active && styles.chipActive]}
                 onPress={() => setFeaturedCompetitionId(f.id)}
+                activeOpacity={0.85}
               >
-                <Text
-                  style={[
-                    styles.chipText,
-                    featuredCompetitionId === f.id && styles.chipTextActive,
-                  ]}
-                  numberOfLines={1}
-                >
+                <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
                   {f.label}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-          {arrowVisible && (
-            <Animated.View style={[styles.scrollArrow, { opacity: arrowOpacity }]} pointerEvents="none">
-              <Ionicons name="chevron-forward" size={24} color={ACCENT_BLUE} />
-            </Animated.View>
-          )}
-        </View>
+            );
+          })}
+        </ScrollView>
 
-        {/* Featured Competition — countdown */}
-        <View style={styles.headerBadgeRow}>
-          {featuredTournament?.endsAt ? (
-            <TournamentCountdown
-              endsAt={featuredTournament.endsAt}
-              compact
-              onDark
-              onEnded={winCheck?.triggerCheck}
-            />
-          ) : tournamentsLoading && tournaments.length === 0 ? (
-            <Text style={styles.countdownPlaceholder}>Loading…</Text>
-          ) : null}
-        </View>
-
-        {/* Dev: 20-sec test cycle for Biggest Fish — visible on Tournaments tab when Biggest Fish selected */}
-        {isDev && featuredCompetitionId === 'biggest-fish-this-week' && (
-          <View style={styles.devCycleRow}>
-            <TouchableOpacity
-              style={styles.devCycleBtn}
-              onPress={async () => {
-                setRestartingCycle(true);
-                try {
-                  const res = await forceRestartTournament('biggest_fish', 10, 20);
-                  if (res.ok) {
-                    await handleRefresh();
-                    loadEntries();
-                  } else {
-                    Alert.alert('Dev', res.error ?? 'Failed');
-                  }
-                } finally {
-                  setRestartingCycle(false);
-                }
-              }}
-              disabled={restartingCycle}
+        {/* Log a catch + share — centered */}
+        <View style={styles.ctaRow}>
+          <TouchableOpacity
+            style={styles.logBtn}
+            activeOpacity={0.88}
+            onPress={handleLogACatch}
+            disabled={isEntered}
+          >
+            <LinearGradient
+              colors={isEntered ? ['#1a5c44', '#174d39'] : ['#12d18a', '#00b37a']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.logBtnGrad}
             >
-              <Text style={styles.devCycleBtnText}>
-                {restartingCycle ? '…' : 'Start 20 sec test cycle (dev)'}
+              {isEntered ? (
+                <Feather name="check" size={18} color="#00e5c8" />
+              ) : (
+                <Feather name="plus" size={18} color="#fff" />
+              )}
+              <Text style={[styles.logBtnText, isEntered && { color: '#00e5c8' }]}>
+                {isEntered ? 'Entered' : 'Log a catch'}
               </Text>
-            </TouchableOpacity>
+            </LinearGradient>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.85}>
+            <Ionicons name="paper-plane-outline" size={20} color={TEAL} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Stats — TOTAL ENTRANTS | TIME REMAINING, Lead centered */}
+        <View style={styles.statsBlock}>
+          <View style={styles.statsRow}>
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>TOTAL ENTRANTS</Text>
+              <Text style={styles.statValue}>
+                {entrantsCount} {entrantsCount === 1 ? 'entrant' : 'entrants'}
+              </Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statCell}>
+              <Text style={styles.statLabel}>TIME REMAINING</Text>
+              <Text style={styles.statValue}>{timeRemaining}</Text>
+            </View>
           </View>
+          <Text style={styles.leadLine}>
+            Lead: <Text style={styles.leadStrong}>{leadDisplay}</Text>
+          </Text>
+        </View>
+
+        {isDev && featuredCompetitionId === 'biggest-fish-this-week' && (
+          <TouchableOpacity
+            style={styles.devBtn}
+            onPress={async () => {
+              setRestartingCycle(true);
+              try {
+                const res = await forceRestartTournament('biggest_fish', 10, 20);
+                if (res.ok) {
+                  await handleRefresh();
+                  loadEntries();
+                } else Alert.alert('Dev', res.error ?? 'Failed');
+              } finally {
+                setRestartingCycle(false);
+              }
+            }}
+            disabled={restartingCycle}
+          >
+            <Text style={styles.devBtnText}>{restartingCycle ? '…' : 'Start 20 sec test cycle (dev)'}</Text>
+          </TouchableOpacity>
         )}
 
-        {/* Stats banner — 3-column */}
-        <LinearGradient
-          colors={['rgba(0,84,130,0.25)', 'rgba(0,30,60,0.4)']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.statsBanner}
-        >
-          <View style={styles.statsShimmer} />
-          <View style={styles.statsGrid}>
-            <View style={styles.statCol}>
-              <Text style={styles.statLabel}>ENTRANTS</Text>
-              <Text style={styles.statValue}>{featuredTournament?.entrantsCount ?? 0}</Text>
-            </View>
-            <View style={[styles.statCol, styles.statColBorder]}>
-              <Text style={styles.statLabel}>LEAD {getMetricLabel(featuredTournament?.metricType ?? 'WEIGHT_LBS').toUpperCase()}</Text>
-              <Text style={styles.statValue}>{leadDisplay}</Text>
-            </View>
-            <View style={[styles.statCol, styles.statColBorder]}>
-              <Text style={styles.statLabel}>UNIT</Text>
-              <Text style={styles.statValue}>{getMetricLabel(featuredTournament?.metricType ?? 'WEIGHT_LBS').toUpperCase()}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.votingRulesTop}>
-          <View style={styles.enterDeleteRow}>
-            <TouchableOpacity
-              style={[styles.enterTournamentBtn, styles.enterHalf]}
-              activeOpacity={0.82}
-              onPress={handleEnterTournament}
-              disabled={isEntered}
-            >
-              <LinearGradient
-                colors={isEntered ? ['#1a5c44', '#174d39'] : ['#00c28a', '#00a87a']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.enterTournamentGrad}
-              >
-                {isEntered ? (
-                  <Feather name="check" size={16} color="#00e5c8" />
-                ) : (
-                  <Feather name="plus" size={16} color="#fff" />
-                )}
-                <Text style={[styles.enterTournamentTxt, isEntered && { color: '#00e5c8' }]}>
-                  {isEntered ? 'Entered' : 'Enter Tournament'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            {isEntered && (
-              <TouchableOpacity
-                style={[styles.deleteEntryBtn, deleteLoading && styles.deleteEntryBtnDisabled]}
-                activeOpacity={0.82}
-                onPress={handleDeleteEntry}
-                disabled={deleteLoading}
-              >
-                <Feather name="trash-2" size={16} color="#ff6b6b" />
-                <Text style={styles.deleteEntryTxt}>Delete entry</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <Text style={styles.votingRulesText}>👍 Verify size  ·  👎 50%+ votes = may be removed</Text>
-          <Text style={styles.votingRulesWarning}>Obviously fake entries will result in a ban from tournaments.</Text>
-        </View>
-
-        {/* Leaderboard — podium (2nd left, 1st center, 3rd right) + rest of leaderboard */}
         {loading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator size="small" color={ACCENT_BLUE} />
+            <ActivityIndicator size="small" color={TEAL} />
           </View>
         ) : entries.length === 0 ? (
           <Text style={styles.empty}>Be the first to enter</Text>
         ) : (
-          <View style={styles.leaderboardWrap}>
-            {/* Podium: 2nd LEFT, 1st CENTER, 3rd RIGHT — always 3 slots, gray placeholder when empty */}
+          <>
+            {/* Podium — 2nd | 1st | 3rd, centered, 1st taller */}
             <View style={styles.podiumRow}>
-              <View key="podium-2" style={[styles.podiumCard, styles.podiumSecond]}>
-                {top3[1] ? (
-                  <LeaderboardRow
-                    entry={top3[1]}
-                    rank={2}
-                    metricType={featuredTournament?.metricType ?? 'WEIGHT_LBS'}
-                    onVote={handleVoteGated}
-                    voteLoading={voteLoadingEntryId}
-                    variant="hero"
-                    isYou={currentUserId != null && top3[1].userId === currentUserId}
-                    onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
-                  />
-                ) : (
-                  <View style={[styles.podiumEmpty, { aspectRatio: 9 / 16 }]}>
-                    <Text style={styles.podiumEmptyText}>No entries</Text>
-                    <Text style={styles.podiumEmptyRank}>2nd</Text>
-                  </View>
-                )}
-              </View>
-              <View key="podium-1" style={[styles.podiumCard, styles.podiumFirst]}>
-                {top3[0] ? (
-                  <LeaderboardRow
-                    entry={top3[0]}
-                    rank={1}
-                    metricType={featuredTournament?.metricType ?? 'WEIGHT_LBS'}
-                    onVote={handleVoteGated}
-                    voteLoading={voteLoadingEntryId}
-                    variant="hero"
-                    isYou={currentUserId != null && top3[0].userId === currentUserId}
-                    onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
-                  />
-                ) : (
-                  <View style={[styles.podiumEmpty, { aspectRatio: 9 / 16 }]}>
-                    <Text style={styles.podiumEmptyText}>No entries</Text>
-                    <Text style={styles.podiumEmptyRank}>1st</Text>
-                  </View>
-                )}
-              </View>
-              <View key="podium-3" style={[styles.podiumCard, styles.podiumThird]}>
-                {top3[2] ? (
-                  <LeaderboardRow
-                    entry={top3[2]}
-                    rank={3}
-                    metricType={featuredTournament?.metricType ?? 'WEIGHT_LBS'}
-                    onVote={handleVoteGated}
-                    voteLoading={voteLoadingEntryId}
-                    variant="hero"
-                    isYou={currentUserId != null && top3[2].userId === currentUserId}
-                    onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
-                  />
-                ) : (
-                  <View style={[styles.podiumEmpty, { aspectRatio: 9 / 16 }]}>
-                    <Text style={styles.podiumEmptyText}>No entries</Text>
-                    <Text style={styles.podiumEmptyRank}>3rd</Text>
-                  </View>
-                )}
-              </View>
+              {renderPodium(2, top3[1], styles.podiumSide)}
+              {renderPodium(1, top3[0], styles.podiumFirst)}
+              {renderPodium(3, top3[2], styles.podiumSide)}
             </View>
 
-            {/* Rest of leaderboard — 2-column portrait grid */}
+            {/* Rest of leaderboard — list */}
             <View style={styles.restSection}>
-              <Text style={styles.restLabel}>Rest of leaderboard</Text>
-              <View style={styles.restContent}>
-                {restEntries.map((entry, i) => (
-                  <View key={entry.id} style={styles.restGridCell}>
-                    <LeaderboardRow
+              <Text style={styles.winningsLine}>
+                Winnings <Text style={styles.winningsStrong}>4th +30</Text>
+                {'  |  '}
+                <Text style={styles.winningsStrong}>5th +15</Text>
+                {'  |  '}
+                <Text style={styles.winningsStrong}>6th-10th +10</Text>
+              </Text>
+              {restEntries.length === 0 ? (
+                <Text style={styles.restEmpty}>No other entrants yet</Text>
+              ) : (
+                restEntries.map((entry, i) => {
+                  const rank = 4 + i;
+                  const isYou = !!(currentUserId && entry.userId === currentUserId);
+                  return (
+                    <RestListRow
+                      key={entry.id}
                       entry={entry}
-                      rank={4 + i}
-                      metricType={featuredTournament?.metricType ?? 'WEIGHT_LBS'}
-                      onVote={handleVoteGated}
-                      voteLoading={voteLoadingEntryId}
-                      variant="restCard"
-                      onRemoveEntry={showRemoveEntry ? handleRemoveEntry : undefined}
+                      rank={rank}
+                      metricType={metricType}
+                      isYou={isYou}
+                      onPress={() => router.push(`/user/${entry.userId}`)}
                     />
-                  </View>
-                ))}
-              </View>
+                  );
+                })
+              )}
             </View>
-          </View>
+          </>
         )}
-
-        <View style={styles.disclaimer}>
-          <Ionicons name="information-circle-outline" size={14} color={colors.textDim} />
-          <Text style={styles.disclaimerText}>
-            Voting verifies the fish meets size/metrics. Down votes over 50% may remove. Enter once — synced to Global and Local.
-          </Text>
-        </View>
       </ScrollView>
 
-      {/* Tournament entry flow — logbook picker + disclaimer confirmation */}
       <TournamentEntryFlow
         visible={showEntryFlow}
         onDismiss={() => setShowEntryFlow(false)}
         tournamentId={featuredCompetitionId}
         tournamentTitle={featuredTournament?.title ?? 'Tournament'}
-        metricType={featuredTournament?.metricType ?? 'LENGTH_IN'}
+        metricType={metricType === 'WEIGHT_LBS' ? 'WEIGHT_LBS' : 'LENGTH_IN'}
         onEntered={handleEntryFlowDone}
       />
     </SafeAreaView>
@@ -686,76 +629,251 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.abyss,
   },
-  scrollView: {
+  scroll: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 6,
-    paddingBottom: 40,
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    alignItems: 'stretch',
   },
-  leaderboardWrap: {
-    marginBottom: 20,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  rankBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    backgroundColor: 'rgba(7,30,48,0.95)',
+  },
+  rankBadgeText: {
+    fontFamily: 'Orbitron_700Bold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+  },
+  customBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,229,200,0.45)',
+    backgroundColor: 'rgba(0,229,200,0.06)',
+    marginBottom: 14,
+  },
+  customBtnText: {
+    flex: 1,
+    fontFamily: 'Sora_600SemiBold',
+    fontSize: 15,
+    color: TEAL,
+    textAlign: 'center',
+  },
+  chipScroll: {
+    marginBottom: 16,
+    marginHorizontal: -16,
+  },
+  chipRow: {
+    paddingHorizontal: 16,
+    gap: 8,
+    alignItems: 'center',
+  },
+  chip: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,229,200,0.35)',
+    backgroundColor: 'rgba(7,30,48,0.8)',
+  },
+  chipActive: {
+    backgroundColor: TEAL,
+    borderColor: TEAL,
+  },
+  chipText: {
+    fontFamily: 'Sora_600SemiBold',
+    fontSize: 13,
+    color: TEAL,
+  },
+  chipTextActive: {
+    color: colors.abyss,
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 16,
+  },
+  logBtn: {
+    flex: 1,
+    maxWidth: 280,
+    borderRadius: 28,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#12d18a',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+      },
+      android: { elevation: 6 },
+    }),
+  },
+  logBtnGrad: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 15,
+    paddingHorizontal: 22,
+  },
+  logBtnText: {
+    fontFamily: 'Sora_600SemiBold',
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#fff',
+  },
+  shareBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,229,200,0.45)',
+    backgroundColor: 'rgba(0,229,200,0.08)',
+  },
+  statsBlock: {
+    alignItems: 'center',
+    marginBottom: 18,
+    paddingVertical: 4,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    width: '100%',
+    maxWidth: 360,
+    alignSelf: 'center',
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: 'rgba(0,229,200,0.18)',
+    marginVertical: 2,
+  },
+  statLabel: {
+    fontFamily: 'Orbitron_400Regular',
+    fontSize: 9,
+    letterSpacing: 1.2,
+    color: 'rgba(214,238,248,0.55)',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  statValue: {
+    fontFamily: 'Sora_600SemiBold',
+    fontSize: 16,
+    color: TEAL,
+    textAlign: 'center',
+  },
+  leadLine: {
+    marginTop: 12,
+    fontFamily: 'Sora_400Regular',
+    fontSize: 14,
+    color: 'rgba(214,238,248,0.75)',
+    textAlign: 'center',
+  },
+  leadStrong: {
+    fontFamily: 'Sora_600SemiBold',
+    color: '#fff',
+    fontWeight: '700',
+  },
+  devBtn: {
+    alignSelf: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,184,0,0.22)',
+    marginBottom: 12,
+  },
+  devBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#b8860b',
+  },
+  loadingWrap: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  empty: {
+    fontFamily: 'Sora_600SemiBold',
+    fontSize: 15,
+    color: colors.textDim,
+    textAlign: 'center',
+    paddingVertical: 36,
   },
   podiumRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
-    gap: 4,
-    marginBottom: 16,
+    gap: 6,
+    marginBottom: 20,
+    paddingHorizontal: 2,
   },
-  podiumCard: {
+  podiumSlot: {
     minWidth: 0,
   },
-  podiumSecond: {
-    flex: 1.2,
+  podiumSide: {
+    flex: 1.15,
   },
   podiumFirst: {
-    flex: 1.6,
+    flex: 1.45,
   },
-  podiumThird: {
-    flex: 1.2,
-  },
-  restSection: {
-    backgroundColor: colors.card,
-    borderRadius: CARD_RADIUS,
-    marginBottom: 8,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  restLabel: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textDim,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  restScroll: {
-    flex: 1,
-  },
-  restContent: {
+  rewardPill: {
+    alignSelf: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 6,
-    gap: 6,
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,200,69,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,200,69,0.35)',
   },
-  restGridCell: {
-    flex: 1,
-    flexBasis: '47%',
-    minWidth: 0,
+  rewardText: {
+    fontFamily: 'Orbitron_700Bold',
+    fontSize: 11,
+    color: colors.gold,
   },
   podiumEmpty: {
-    backgroundColor: 'rgba(7,30,48,0.6)',
+    backgroundColor: 'rgba(7,30,48,0.65)',
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 0,
+    width: '100%',
+  },
+  podiumEmptyFirst: {
+    aspectRatio: 9 / 16,
+  },
+  podiumEmptySide: {
+    aspectRatio: 9 / 15,
   },
   podiumEmptyText: {
     fontSize: 12,
@@ -768,316 +886,76 @@ const styles = StyleSheet.create({
     marginTop: 4,
     opacity: 0.7,
   },
-  header: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    paddingBottom: 6,
-    gap: 4,
+  restSection: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,200,0.12)',
+    backgroundColor: 'rgba(7,30,48,0.55)',
+    overflow: 'hidden',
+    marginBottom: 12,
   },
-  headerTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-  },
-  aboutBtn: {
-    paddingVertical: 6,
+  winningsLine: {
+    textAlign: 'center',
+    fontFamily: 'Sora_400Regular',
+    fontSize: 12,
+    color: 'rgba(214,238,248,0.55)',
+    paddingVertical: 12,
     paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,229,200,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,229,200,0.25)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,229,200,0.1)',
   },
-  aboutBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.teal,
+  winningsStrong: {
+    fontFamily: 'Sora_600SemiBold',
+    color: TEAL,
   },
-  title: {
-    fontFamily: 'Orbitron_900Black',
-    fontSize: 20,
-    fontWeight: '900',
-    color: colors.teal,
-    marginBottom: 2,
-    textShadowColor: 'rgba(0,229,200,0.3)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  subtitle: {
-    fontSize: 10,
+  restEmpty: {
+    textAlign: 'center',
     color: colors.textFaint,
-  },
-  toggleWrap: {
-    marginBottom: 8,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  viewLeaderboardWrap: {
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  viewLeaderboardBtn: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#FFD700',
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.6,
-        shadowRadius: 8,
-      },
-      android: { elevation: 6 },
-    }),
-  },
-  viewLeaderboardGradient: {
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-  },
-  viewLeaderboardText: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#1a1000',
-    letterSpacing: 0.5,
-  },
-  syncHint: {
-    fontSize: 11,
-    color: colors.textFaint,
-    marginTop: 4,
-  },
-  filtersWrap: {
-    marginBottom: 8,
-    position: 'relative',
-  },
-  scrollArrow: {
-    position: 'absolute',
-    right: 8,
-    top: '50%',
-    marginTop: -12,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOffset: { width: 1, height: 0 }, shadowOpacity: 0.2, shadowRadius: 2 },
-      android: { elevation: 4 },
-    }),
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingBottom: 8,
-  },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  chipActive: {
-    backgroundColor: 'rgba(0,229,200,0.15)',
-    borderColor: 'rgba(0,229,200,0.4)',
-  },
-  chipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textFaint,
-  },
-  chipTextActive: {
-    color: colors.teal,
-    textShadowColor: 'rgba(0,229,200,0.3)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
-  },
-  headerBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  countdownPlaceholder: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 18,
   },
-  devCycleRow: {
-    marginBottom: 8,
-  },
-  devCycleBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,184,0,0.25)',
-    alignSelf: 'flex-start',
-  },
-  devCycleBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#b8860b',
-  },
-  statsBanner: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(0,207,255,0.12)',
-    marginBottom: 8,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  statsShimmer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'transparent',
-  },
-  statsGrid: {
+  restRow: {
     flexDirection: 'row',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,229,200,0.08)',
+    gap: 10,
   },
-  statCol: {
-    flex: 1,
+  restRank: {
+    fontFamily: 'Orbitron_700Bold',
+    fontSize: 13,
+    color: colors.textDim,
+    width: 32,
+  },
+  restAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  restAvatarPh: {
+    backgroundColor: colors.cardHi,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  statColBorder: {
-    borderLeftWidth: 1,
-    borderLeftColor: 'rgba(0,207,255,0.15)',
-  },
-  statLabel: {
-    fontFamily: 'Orbitron_400Regular',
-    fontSize: 9,
-    color: colors.textDim,
-    marginBottom: 4,
-    letterSpacing: 1,
-  },
-  statValue: {
-    fontFamily: 'Orbitron_700Bold',
-    fontSize: 14,
+  restAvatarInit: {
+    color: TEAL,
     fontWeight: '700',
-    color: colors.cyan,
-    textShadowColor: 'rgba(0,207,255,0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 14,
+    fontSize: 14,
   },
-  votingRulesTop: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    marginBottom: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: 'rgba(0,229,200,0.04)',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(0,229,200,0.1)',
-    gap: 8,
-  },
-  enterDeleteRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 8,
-  },
-  enterHalf: {
+  restNameCol: {
     flex: 1,
     minWidth: 0,
   },
-  deleteEntryBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,107,107,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,107,107,0.35)',
-  },
-  deleteEntryBtnDisabled: {
-    opacity: 0.6,
-  },
-  deleteEntryTxt: {
+  restName: {
+    fontFamily: 'Sora_600SemiBold',
     fontSize: 14,
-    fontWeight: '800',
-    color: '#ff6b6b',
-    letterSpacing: 0.2,
+    color: colors.text,
   },
-  votingRulesText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textDim,
-  },
-  votingRulesWarning: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#c62828',
-    marginTop: 4,
-  },
-  enterTournamentBtn: {
-    borderRadius: 10,
-    overflow: 'hidden',
-    alignSelf: 'stretch',
-  },
-  enterTournamentGrad: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-  },
-  enterTournamentTxt: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 0.2,
-  },
-  loadingWrap: {
-    paddingVertical: 20,
-    alignItems: 'center',
-  },
-  leaderboard: {
-    borderTopWidth: 1,
-    borderTopColor: colors.lightBorder,
-    paddingTop: 8,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  empty: {
-    fontSize: 15,
-    color: colors.textDim,
-    textAlign: 'center',
-    paddingVertical: 20,
-  },
-  viewFullBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  viewFullText: {
-    fontFamily: 'Orbitron_700Bold',
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.teal,
-  },
-  disclaimer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
-    paddingVertical: 12,
-  },
-  disclaimerText: {
-    flex: 1,
-    fontSize: 11,
-    color: colors.textDim,
-    lineHeight: 16,
+  restMetric: {
+    fontFamily: 'Sora_600SemiBold',
+    fontSize: 13,
+    color: TEAL,
   },
 });

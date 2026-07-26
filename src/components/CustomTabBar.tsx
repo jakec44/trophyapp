@@ -6,47 +6,57 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '@/utils/colors';
 import { useAuthContext } from '@/src/context/AuthContext';
 import { useTournamentWinCheckContext } from '@/src/context/TournamentWinCheckContext';
+
+/** App Store tab order: Compete · Home · Log · Logbook · Profile */
 const TAB_CONFIG = [
-  {
-    name: 'Home',
-    route: '/(tabs)',
-    icon: 'home-outline',
-    iconActive: 'home',
-  },
   {
     name: 'Compete',
     route: '/(tabs)/tournaments',
-    icon: 'trophy-outline',
-    iconActive: 'trophy',
+    icon: 'trophy-outline' as const,
+    iconActive: 'trophy' as const,
+  },
+  {
+    name: 'Home',
+    route: '/(tabs)/index',
+    icon: 'home-outline' as const,
+    iconActive: 'home' as const,
   },
   {
     name: 'Log',
     route: '/(tabs)/log',
-    icon: 'add-circle',
-    iconActive: 'add-circle',
+    icon: 'add-circle' as const,
+    iconActive: 'add-circle' as const,
     isCenter: true,
   },
   {
     name: 'Logbook',
     route: '/(tabs)/logbook',
-    icon: 'book-outline',
-    iconActive: 'book',
+    icon: 'book-outline' as const,
+    iconActive: 'book' as const,
   },
   {
     name: 'Profile',
     route: '/(tabs)/profile',
-    icon: 'person-outline',
-    iconActive: 'person',
+    icon: 'person-outline' as const,
+    iconActive: 'person' as const,
   },
 ] as const;
 
 function isRouteActive(pathname: string, route: string): boolean {
-  if (route === '/(tabs)') {
-    return !pathname || pathname === '/' || pathname === '/(tabs)' || pathname.endsWith('index');
-  }
   if (route.includes('tournaments')) return pathname.includes('tournaments');
-  if (route.includes('log')) return pathname.includes('log');
+  if (route.includes('index') || route === '/(tabs)/index') {
+    return (
+      pathname === '/' ||
+      pathname === '/index' ||
+      pathname.endsWith('/(tabs)') ||
+      pathname.endsWith('/(tabs)/') ||
+      pathname.includes('/index')
+    );
+  }
   if (route.includes('logbook')) return pathname.includes('logbook');
+  if (route.endsWith('/log') || route.includes('(tabs)/log')) {
+    return pathname.includes('/log') && !pathname.includes('logbook');
+  }
   if (route.includes('profile')) return pathname.includes('profile');
   return false;
 }
@@ -75,14 +85,12 @@ export function CustomTabBar() {
     <View style={styles.container}>
       {TAB_CONFIG.map((tab) => {
         const isActive = isRouteActive(pathname, tab.route);
-        const isCenter = tab.isCenter ?? false;
+        const isCenter = 'isCenter' in tab && tab.isCenter;
         const isProfile = tab.name === 'Profile';
         const isTrophy = tab.name === 'Compete';
 
         const handlePress = () => {
-          if (tab.route === '/(tabs)') {
-            router.replace('/(tabs)');
-          } else if (tab.route === '/(tabs)/log' && tab.isCenter) {
+          if (tab.route === '/(tabs)/log' && isCenter) {
             if (!user?.id) router.replace('/(tabs)/profile');
             else router.push('/camera');
           } else {
@@ -104,19 +112,9 @@ export function CustomTabBar() {
                 end={{ x: 1, y: 1 }}
                 style={styles.centerBtnInner}
               >
-                <Ionicons
-                  name={tab.icon as any}
-                  size={32}
-                  color="#FFF"
-                />
+                <Ionicons name={tab.icon} size={32} color="#FFF" />
               </LinearGradient>
-              <Text
-                style={[
-                  styles.label,
-                  styles.centerLabel,
-                  isActive && styles.labelActive,
-                ]}
-              >
+              <Text style={[styles.label, styles.centerLabel, isActive && styles.labelActive]}>
                 {tab.name}
               </Text>
             </TouchableOpacity>
@@ -124,21 +122,19 @@ export function CustomTabBar() {
         }
 
         return (
-          <View key={tab.name} ref={isProfile ? profileTabRef : isTrophy ? trophyTabRef : undefined} style={styles.tab} collapsable={false}>
-            <TouchableOpacity
-              style={styles.tabTouchable}
-              onPress={handlePress}
-              activeOpacity={0.7}
-            >
+          <View
+            key={tab.name}
+            ref={isProfile ? profileTabRef : isTrophy ? trophyTabRef : undefined}
+            style={styles.tab}
+            collapsable={false}
+          >
+            <TouchableOpacity style={styles.tabTouchable} onPress={handlePress} activeOpacity={0.7}>
               <Ionicons
-                name={(isActive ? tab.iconActive : tab.icon) as any}
+                name={isActive ? tab.iconActive : tab.icon}
                 size={24}
                 color={isActive ? colors.teal : 'rgba(214,238,248,0.35)'}
               />
-              <Text
-                style={[styles.label, isActive && styles.labelActive]}
-                numberOfLines={1}
-              >
+              <Text style={[styles.label, isActive && styles.labelActive]} numberOfLines={1}>
                 {tab.name}
               </Text>
             </TouchableOpacity>
@@ -192,7 +188,12 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#020b14',
     ...Platform.select({
-      ios: { shadowColor: colors.teal, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.45, shadowRadius: 24 },
+      ios: {
+        shadowColor: colors.teal,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.45,
+        shadowRadius: 24,
+      },
       android: { elevation: 8 },
     }),
   },
