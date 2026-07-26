@@ -56,16 +56,18 @@ const ACCENT_BLUE = TEAL;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const FILTER_IDS: { id: string; label: string }[] = [
-  { id: 'biggest-fish-this-week', label: 'Weekly Biggest' },
-  { id: 'tournament-rarest', label: 'Weekly Rarest' },
   { id: 'tournament-bass', label: 'Bass' },
+  { id: 'tournament-redfish', label: 'Redfish' },
   { id: 'tournament-snook', label: 'Snook' },
   { id: 'tournament-tarpon', label: 'Tarpon' },
-  { id: 'tournament-bluegill', label: 'Bluegill' },
-  { id: 'tournament-catfish', label: 'Catfish' },
 ];
 
-const FEATURED_IDS = FILTER_IDS.map((f) => f.id);
+const FEATURED_IDS = [
+  'tournament-bass',
+  'tournament-redfish',
+  'tournament-snook',
+  'tournament-tarpon',
+];
 
 const SELECTED_TOURNAMENT_KEY = '@Snagged/selectedTournamentId';
 
@@ -85,7 +87,7 @@ export default function TournamentsScreen() {
     [user?.id, friends]
   );
   const [featuredCompetitionId, setFeaturedCompetitionIdState] = useState(
-    deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : 'biggest-fish-this-week'
+    deepLinkId && FEATURED_IDS.includes(deepLinkId) ? deepLinkId : FEATURED_IDS[0]
   );
   const hasRestoredSelection = useRef(false);
 
@@ -387,27 +389,16 @@ export default function TournamentsScreen() {
           />
         }
       >
-        {/* Header — back to Home, title + About */}
+        {/* Header — Snagged on top, tournament title + About */}
         <View style={styles.header}>
           <View style={styles.headerTopRow}>
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => {
-                if (router.canGoBack()) router.back();
-                else router.replace('/(tabs)/index');
-              }}
-              hitSlop={12}
-              accessibilityLabel="Back to Home"
-            >
-              <Ionicons name="arrow-back" size={22} color={colors.lightText} />
-            </TouchableOpacity>
             <SnaggedWordmark />
             <TouchableOpacity style={styles.aboutBtn} onPress={() => setShowAboutModal(true)}>
               <Text style={styles.aboutBtnText}>About</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.title} numberOfLines={1}>
-            {(featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
+            {featuredTournament?.id === 'biggest-fish-this-week' ? 'BIGGEST FISH OVERALL' : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
           </Text>
         </View>
 
@@ -783,19 +774,10 @@ const styles = StyleSheet.create({
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
     width: '100%',
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,229,200,0.08)',
-  },
   aboutBtn: {
-    marginLeft: 'auto',
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
