@@ -399,7 +399,11 @@ export default function TournamentsScreen() {
             </TouchableOpacity>
           </View>
           <Text style={styles.title} numberOfLines={1}>
-            {featuredTournament?.id === 'biggest-fish-this-week' ? 'BIGGEST FISH OVERALL' : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
+            {featuredTournament?.id === 'biggest-fish-this-week'
+              ? 'WEEKLY BIGGEST'
+              : featuredTournament?.id === 'tournament-smallest'
+                ? 'WEEKLY RAREST'
+                : (featuredTournament?.title ?? 'TOURNAMENTS').toUpperCase()}
           </Text>
         </View>
 
